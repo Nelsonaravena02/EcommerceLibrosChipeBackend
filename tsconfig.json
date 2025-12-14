@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    // Directorios de entrada/salida
+    "rootDir": "./src",
+    "outDir": "./dist",
+
+    // Configuración del entorno Node + ESM
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2022",
+    "lib": ["ESNext"],
+    "types": ["node"],
+
+    // Generación de tipos y mapas
+    "sourceMap": true,
+    "declaration": true,
+    "declarationMap": true,
+
+    // Reglas de chequeo estricto
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+
+    // Módulos e imports modernos
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "skipLibCheck": true
+  },
+  "include": ["src"]
+}

@@ -1,0 +1,216 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model carrito {
+  id          Int       @id @default(autoincrement())
+  id_cliente  Int
+  id_producto Int
+  cantidad    Int
+  clientes    clientes  @relation(fields: [id_cliente], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_carrito_cliente")
+  productos   productos @relation(fields: [id_producto], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_carrito_producto")
+}
+
+model categorias {
+  id        Int         @id @default(autoincrement())
+  nombre    String      @db.VarChar(255)
+  productos productos[]
+}
+
+model clientes {
+  id                      Int         @id @default(autoincrement())
+  nombre                  String      @db.VarChar(255)
+  email                   String      @unique @db.VarChar(255)
+  password                String?
+  phone                   String?     @db.VarChar(20)
+  id_rol                  Int
+  c_at                    DateTime?   @default(now()) @db.Timestamp(6)
+  u_at                    DateTime?   @default(now()) @db.Timestamp(6)
+  google_id               String?     @unique @db.VarChar(255)
+  is_email_verified       Boolean     @default(false)
+  verification_token      String?
+  verification_expires_at DateTime?   @db.Timestamptz(6)
+  reset_token             String?     @db.VarChar(255)
+  reset_token_expires_at  DateTime?   @db.Timestamptz(6)
+  carrito                 carrito[]
+  rol                     rol         @relation(fields: [id_rol], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_clientes_rol")
+  favoritos               favoritos[]
+  locations               locations[]
+  ordenes                 ordenes[]
+
+  @@index([verification_token], map: "idx_clientes_verification_token")
+}
+
+model comunas {
+  id           Int            @id @default(autoincrement())
+  codigo_envio String         @unique @db.VarChar(20)
+  nombre       String         @db.VarChar(255)
+  created_at   DateTime?      @default(now()) @db.Timestamp(6)
+  id_region    Int?
+  costos_envio costos_envio[]
+  ordenes      ordenes[]
+
+  @@index([codigo_envio], map: "idx_comunas_codigo_envio")
+}
+
+model costos_envio {
+  id                Int                @id @default(autoincrement())
+  id_comuna_destino Int
+  size              shipping_size_enum
+  costo             Int
+  created_at        DateTime?          @default(now()) @db.Timestamp(6)
+  updated_at        DateTime?          @default(now()) @db.Timestamp(6)
+  comunas           comunas            @relation(fields: [id_comuna_destino], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_comuna_destino")
+
+  @@unique([id_comuna_destino, size], map: "unique_comuna_destino_size")
+  @@index([id_comuna_destino, size], map: "idx_costos_envio_comuna_size")
+}
+
+model favoritos {
+  id_cliente   Int
+  id_producto  Int
+  favorited_at DateTime? @default(now()) @db.Timestamp(6)
+  clientes     clientes  @relation(fields: [id_cliente], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_favoritos_cliente")
+  productos    productos @relation(fields: [id_producto], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_favoritos_producto")
+
+  @@id([id_cliente, id_producto], map: "pk_favoritos")
+}
+
+model locations {
+  id              Int       @id @default(autoincrement())
+  id_cliente      Int?
+  recipient_name  String    @db.VarChar(255)
+  recipient_phone String?   @db.VarChar(50)
+  address_line1   String
+  address_line2   String?
+  city            String    @db.VarChar(100)
+  state_province  String    @db.VarChar(100)
+  postal_code     String    @db.VarChar(20)
+  country         String    @db.VarChar(100)
+  created_at      DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime? @default(now()) @db.Timestamptz(6)
+  clientes        clientes? @relation(fields: [id_cliente], references: [id], onUpdate: NoAction, map: "fk_location_cliente")
+  ordenes         ordenes[]
+
+  @@index([id_cliente], map: "idx_location_id_cliente")
+}
+
+model ordenes {
+  id                 Int             @id @default(autoincrement())
+  id_cliente         Int?
+  total_precio       Int
+  id_status_ordenes  Int
+  c_at               DateTime?       @default(now()) @db.Timestamp(6)
+  u_at               DateTime?       @default(now()) @db.Timestamp(6)
+  id_location        Int
+  costo_envio        Int?
+  id_comuna_destino  Int?
+  blue_express_code  String?         @db.VarChar(255)
+  access_token       String?         @unique(map: "unique_ordenes_access_token")
+  short_access_token String?         @db.VarChar(8)
+  comments           String?
+  clientes           clientes?       @relation(fields: [id_cliente], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ordenes_cliente")
+  comunas            comunas?        @relation(fields: [id_comuna_destino], references: [id], onUpdate: NoAction, map: "fk_ordenes_comuna_destino")
+  locations          locations       @relation(fields: [id_location], references: [id], onUpdate: NoAction, map: "fk_ordenes_location")
+  status_ordenes     status_ordenes  @relation(fields: [id_status_ordenes], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ordenes_status_ordenes")
+  ordenes_items      ordenes_items[]
+  payments           payments[]
+
+  @@index([access_token], map: "idx_ordenes_access_token")
+  @@index([id_comuna_destino], map: "idx_ordenes_id_comuna_destino")
+}
+
+model ordenes_items {
+  id                          Int       @id @default(autoincrement())
+  id_orden                    Int
+  id_producto                 Int
+  cantidad                    Int
+  precio_unitario_congelado   Decimal   @db.Decimal(10, 2)
+  discount_aplicado_congelado Decimal   @db.Decimal(10, 8)
+  precio_item_total           Decimal?  @db.Decimal(10, 2)
+  ordenes                     ordenes   @relation(fields: [id_orden], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ordenes_items_orden")
+  productos                   productos @relation(fields: [id_producto], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ordenes_items_producto")
+}
+
+model payment_statuses {
+  id          Int        @id @default(autoincrement())
+  status_code String     @unique @db.VarChar(50)
+  description String?
+  payments    payments[]
+}
+
+model payments {
+  id                  Int              @id @default(autoincrement())
+  id_orden            Int
+  id_payment_status   Int
+  payment_method      String           @db.VarChar(50)
+  amount              Decimal          @db.Decimal(10, 2)
+  transaction_id_prod String?          @unique @db.VarChar(255)
+  transaction_id_inte String?          @db.VarChar(255)
+  provider            String?          @db.VarChar(100)
+  payment_date        DateTime?        @default(now()) @db.Timestamptz(6)
+  metadata            Json?
+  ordenes             ordenes          @relation(fields: [id_orden], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_payment_order")
+  payment_statuses    payment_statuses @relation(fields: [id_payment_status], references: [id], onUpdate: NoAction, map: "fk_payment_status")
+
+  @@index([id_orden], map: "idx_payment_id_orden")
+  @@index([transaction_id_prod], map: "idx_payment_transaction_id_prod")
+  @@index([transaction_id_inte], map: "idx_payment_transaction_id_inte")
+}
+
+model productos {
+  id              Int                 @id @default(autoincrement())
+  nombre          String              @db.VarChar(255)
+  precio          Int
+  stock           Int                 @default(0)
+  descripcion     String?
+  created_at      DateTime?           @default(now()) @db.Timestamp(6)
+  updated_at      DateTime?           @default(now()) @db.Timestamp(6)
+  id_categoria    Int?
+  is_active       Boolean             @default(true)
+  discount        Decimal             @default(0.00) @db.Decimal(10, 8)
+  precio_final    Int
+  shipping_size   shipping_size_enum?
+  image_url       String?
+  image_public_id String?
+  rating          Int?
+  carrito         carrito[]
+  favoritos       favoritos[]
+  ordenes_items   ordenes_items[]
+  categorias      categorias?         @relation(fields: [id_categoria], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_id_categoria")
+
+  @@index([is_active], map: "idx_productos_is_active")
+}
+
+model regiones {
+  id         Int       @id @default(autoincrement())
+  nombre     String    @unique @db.VarChar(100)
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([nombre], map: "idx_regiones_nombre")
+}
+
+model rol {
+  id       Int        @id @default(autoincrement())
+  rol      String     @unique @db.VarChar(100)
+  clientes clientes[]
+}
+
+model status_ordenes {
+  id      Int       @id @default(autoincrement())
+  status  String    @unique @db.VarChar(100)
+  ordenes ordenes[]
+}
+
+enum shipping_size_enum {
+  XS
+  S
+  M
+  L
+}
