@@ -1,7 +1,7 @@
-import { Router } from 'express';
+import { Router, type Router as ExpressRouter } from 'express';
 import { CreateUser } from '../controllers/userAccountController.js';
 
-const router = Router();
+const router: ExpressRouter = Router();
 
 router.post('/usuarios', CreateUser);
 

@@ -1,9 +1,14 @@
 import express from 'express';
-import { obtenerProductos, obtenerProductosPorCategoria, obtenerProductoPorID} from '../controllers/productController.js';
+import {
+  obtenerProductos,
+  obtenerProductosPorCategoria,
+  obtenerProductoPorID,
+} from '../controllers/productController.js';
 
-const router = express.Router();
+const router: express.Router = express.Router();
 
 router.get('/', obtenerProductos);
-router.get('/por-categoria', obtenerProductosPorCategoria)
-router.get('/producto', obtenerProductoPorID)
+router.get('/por-categoria', obtenerProductosPorCategoria);
+router.get('/producto', obtenerProductoPorID);
+
 export default router;
