@@ -5,6 +5,7 @@ import cors from 'cors';
 import { CreateUser } from './controllers/userAccountController.js';
 import authRouter from './routes/logingoogle.js';
 import webpayRoutes from './routes/webpay.js';
+import shippingRoutes from './routes/chilexpressRoutes.js';
 
 dotenv.config();
 
@@ -26,6 +27,7 @@ app.post('/api/clientes', CreateUser);
 app.use('/api/auth', authRouter);
 
 app.use('/api/webpay', webpayRoutes);
+app.use('/api/shipping', shippingRoutes);
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
