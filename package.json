@@ -36,6 +36,7 @@
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "google-auth-library": "^10.5.0",
-    "jsonwebtoken": "^9.0.3"
+    "jsonwebtoken": "^9.0.3",
+    "transbank-sdk": "^6.1.1"
   }
 }
