@@ -27,7 +27,7 @@ app.post('/api/clientes', CreateUser);
 app.use('/api/auth', authRouter);
 
 app.use('/api/webpay', webpayRoutes);
-app.use('/api/shipping', shippingRoutes);
+app.use("/api/shipping", shippingRoutes);
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
