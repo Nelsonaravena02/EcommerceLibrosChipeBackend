@@ -1,8 +1,8 @@
-// routes/webpay.ts o en tu app principal
+// src/routes/webpay.ts
 import { Router } from 'express';
 import { createTransaction } from '../controllers/webpayController.js';
 
-const router = Router();
+const router: Router = Router();
 
 router.post('/create', createTransaction);
 
