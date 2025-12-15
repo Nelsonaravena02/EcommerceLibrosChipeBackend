@@ -1,6 +1,14 @@
+// src/controllers/webpayController.ts - VERSIÓN CORREGIDA
 import type { Request, Response } from 'express';
 import pkg from 'transbank-sdk';
-const { Environment, IntegrationApiKeys, IntegrationCommerceCodes, Options, WebpayPlus } = pkg;
+
+const { 
+  Environment, 
+  IntegrationApiKeys, 
+  IntegrationCommerceCodes, 
+  Options, 
+  WebpayPlus 
+} = pkg;
 
 interface CreateTransactionRequest {
   buyOrder: string;
@@ -8,33 +16,28 @@ interface CreateTransactionRequest {
   amount: number;
 }
 
-interface WebpayCreateResponse {
-  url: string;
-  token: string;
-}
-
-// URL donde Transbank redirigirá post-pago (cámbiala por tu dominio)
-const RETURN_URL = 'https://ecommercechipelibros.pages.dev/';
+const RETURN_URL = process.env.WEBPAY_RETURN_URL || 'https://ecommercelibroschipebackend-production.up.railway.app/api/webpay/return';
 
 export const createTransaction = async (req: Request, res: Response): Promise<void> => {
   try {
     const { buyOrder, sessionId, amount }: CreateTransactionRequest = req.body;
 
-    // Validaciones básicas
     if (!buyOrder || !sessionId || !amount || amount <= 0) {
-      res.status(400).json({ error: 'Faltan parámetros requeridos o monto inválido' });
+      res.status(400).json({ error: 'Parámetros inválidos' });
       return;
     }
 
-    // Crear transacción Webpay Plus (entorno integración)
-    const transaction = WebpayPlus.Transaction.buildForIntegration(
-      IntegrationApiKeys.WEBPAY,
-      IntegrationCommerceCodes.WEBPAY_PLUS
+    const options = new Options(
+      IntegrationCommerceCodes.WEBPAY_PLUS,  
+      IntegrationApiKeys.WEBPAY,             
+      Environment.Integration                 
     );
 
+    const transaction = new WebpayPlus.Transaction(options);
+
+    console.log('🔄 Creando transacción Webpay...');
     const response = await transaction.create(buyOrder, sessionId, amount, RETURN_URL);
 
-    // Respuesta para frontend
     res.status(200).json({
       success: true,
       url: response.url,
@@ -42,12 +45,12 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
       buyOrder: response.buyOrder
     });
 
-  } catch (error) {
-    console.error('Error creando transacción Webpay:', error);
+  } catch (error: any) {
+    console.error('❌ Error Webpay:', error.message);
     res.status(500).json({ 
       success: false, 
-      error: 'Error interno al crear transacción',
-      details: (error as Error).message 
+      error: 'Error Webpay',
+      details: error.message 
     });
   }
 };
