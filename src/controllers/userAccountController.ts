@@ -97,14 +97,23 @@ export const loginConGoogleController = async (req: Request, res: Response) => {
   try {
     const { credential } = req.body;
 
-    if (!credential) {
-      return res.status(400).json({ message: 'Falta credential de Google' });
+    console.log('Credential recibido:', credential);
+    console.log('GOOGLE_CLIENT_ID:', GOOGLE_CLIENT_ID);
+
+    if (!credential || typeof credential !== 'string') {
+      return res.status(400).json({ message: 'Falta o es inválido el credential de Google' });
     }
 
-    const ticket = await client.verifyIdToken({
-      idToken: credential,
-      audience: GOOGLE_CLIENT_ID, // ya garantizado como string
-    });
+    let ticket;
+    try {
+      ticket = await client.verifyIdToken({
+        idToken: credential,
+        audience: GOOGLE_CLIENT_ID,
+      });
+    } catch (verifyError) {
+      console.error('Error en verifyIdToken:', verifyError);
+      return res.status(401).json({ message: 'Token de Google inválido o expirado' });
+    }
 
     const payload = ticket.getPayload();
     if (!payload) {
@@ -121,12 +130,17 @@ export const loginConGoogleController = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'No se pudo obtener email o google_id' });
     }
 
-    const rolCliente = await prisma.rol.findUnique({
+    let rolCliente = await prisma.rol.findUnique({
       where: { rol: 'cliente' },
     });
 
+    // Crear rol "cliente" automáticamente si no existe
     if (!rolCliente) {
-      return res.status(500).json({ message: 'Rol "cliente" no existe en la base de datos' });
+      console.warn('Rol "cliente" no existe, creando automáticamente...');
+      rolCliente = await prisma.rol.create({
+        data: { rol: 'cliente' },
+      });
+      console.log('Rol "cliente" creado:', rolCliente);
     }
 
     let cliente = await prisma.clientes.findFirst({
@@ -136,6 +150,7 @@ export const loginConGoogleController = async (req: Request, res: Response) => {
     });
 
     if (!cliente) {
+      console.log('Usuario no encontrado, creando nuevo cliente...');
       cliente = await prisma.clientes.create({
         data: {
           nombre: nombre || 'Usuario',
@@ -146,7 +161,9 @@ export const loginConGoogleController = async (req: Request, res: Response) => {
           id_rol: rolCliente.id,
         },
       });
+      console.log('Cliente creado:', cliente);
     } else if (!cliente.google_id) {
+      console.log('Cliente existente sin google_id, actualizando...');
       cliente = await prisma.clientes.update({
         where: { id: cliente.id },
         data: {
@@ -154,6 +171,9 @@ export const loginConGoogleController = async (req: Request, res: Response) => {
           is_email_verified: true,
         },
       });
+      console.log('Cliente actualizado:', cliente);
+    } else {
+      console.log('Cliente existente encontrado:', cliente);
     }
 
     const token = generarToken({ id: cliente.id, id_rol: cliente.id_rol });
@@ -173,6 +193,8 @@ export const loginConGoogleController = async (req: Request, res: Response) => {
     console.error('Error en login con Google:', error);
     return res.status(500).json({
       message: 'Error interno en login con Google',
+      error: error instanceof Error ? error.message : error,
     });
   }
 };
+
