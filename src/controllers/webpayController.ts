@@ -18,7 +18,7 @@ interface CreateTransactionRequest {
 
 
 // src/controllers/webpayController.ts - SOLO createTransaction
-export const createTransaction = async (req: Request, res: Response): Promise<void> => {
+export const createTransaction = async (req: Request, res: Response) => {
   try {
     const { buyOrder, sessionId, amount }: CreateTransactionRequest = req.body;
 
@@ -60,7 +60,7 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
 
 
 
-export const webpayReturn = async (req: Request, res: Response): Promise<void> => {
+export const webpayReturn = async (req: Request, res: Response) => {
     console.log('🎯 === TRANSBANK RETURN HIT ===', req.query); // ← ÚNICO LOG
 
   try {
@@ -84,13 +84,14 @@ export const webpayReturn = async (req: Request, res: Response): Promise<void> =
   }
 };
 
-export const webpayCommit = async (req: Request, res: Response): Promise<void> => {
+
+
+export const webpayCommit = async (req: Request, res: Response) => { 
   try {
     const { token } = req.body || req.query;
     
     if (!token) {
-      res.status(400).json({ error: 'Token requerido' });
-      return;
+      return res.status(400).json({ error: 'Token requerido' });
     }
 
     const options = new Options(
@@ -102,18 +103,28 @@ export const webpayCommit = async (req: Request, res: Response): Promise<void> =
     const transaction = new WebpayPlus.Transaction(options);
     const result = await transaction.commit(token as string);
     
-    console.log('💳 Commit resultado:', result);
+    console.log('💳 Commit RAW:', result);
     
-    const isSuccess = result.responseCode === 0;
+    // ✅ snake_case CORRECTO
+    const success = result.response_code === 0;
+    
+    console.log('✅ SUCCESS:', success, 'response_code:', result.response_code);
     
     res.json({
-      success: isSuccess, 
-      data: result
+      success,
+      data: result,
+      message: success ? 'Pago autorizado' : 'Pago rechazado'
     });
     
   } catch (error: any) {
-    console.error('❌ Commit error:', error);
-    res.status(500).json({ error: 'Commit falló' });
+    console.error('❌ Commit ERROR:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
   }
 };
+
+
+
 
