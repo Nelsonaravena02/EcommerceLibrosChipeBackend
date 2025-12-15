@@ -1,4 +1,3 @@
-// src/controllers/chilexpressSmartController.ts
 import axios from "axios";
 import type { Request, Response } from "express";
 import { ORIGIN_SHIPPING } from "../config/shipping.js";
@@ -7,10 +6,10 @@ const BASE_GEO = "https://testservices.wschilexpress.com/georeference/api/v1.0";
 const BASE_RATING = "https://testservices.wschilexpress.com/rating/api/v1.0";
 
 interface AddressInput {
-  regionCode: string;   // ej: "RM"
-  countyName: string;   // ej: "Ñuñoa"
-  streetName: string;   // ej: "Avenida Providencia"
-  number: string;       // ej: "1245"
+  regionCode: string;
+  countyName: string;
+  streetName: string;
+  number: string;
   postalCode?: string;
 }
 
@@ -102,7 +101,6 @@ export const getSmartShippingQuote = async (req: Request, res: Response) => {
 
     const destinationCountyCode = String(coverage.countyCode);
 
-    // 2) Cotizador courier
     const quoteResp = await axios.post(
       `${BASE_RATING}/rates/courier`,
       {
@@ -125,7 +123,6 @@ export const getSmartShippingQuote = async (req: Request, res: Response) => {
 
     const options: any[] = quoteResp.data.data?.courierServiceOptions || [];
 
-    // 🔎 DEBUG: ver todas las opciones para este destino
     console.log(
       "Destino Chilexpress:",
       {
@@ -147,12 +144,27 @@ export const getSmartShippingQuote = async (req: Request, res: Response) => {
       )
     );
 
-    const best = options[0] || null;
+    // Mejor opción por defecto (primera o la más barata, como prefieras)
+    const best =
+      options.length > 0
+        ? options.reduce((min, o) =>
+            parseInt(o.serviceValue || "0") < parseInt(min.serviceValue || "0")
+              ? o
+              : min
+          )
+        : null;
 
     return res.json({
       success: true,
       destinationCountyCode,
       quote: quoteResp.data,
+      options: options.map((o) => ({
+        serviceType: o.serviceTypeCode,
+        description: o.serviceDescription,
+        price: parseInt(o.serviceValue || "0"),
+        finalWeight: o.finalWeight,
+        deliveryType: o.deliveryType,
+      })),
       recommended: best
         ? {
             serviceType: best.serviceTypeCode,
@@ -164,7 +176,10 @@ export const getSmartShippingQuote = async (req: Request, res: Response) => {
         : null,
     });
   } catch (error: any) {
-    console.error("❌ Chilexpress SMART ERROR:", error.response?.data || error.message);
+    console.error(
+      "❌ Chilexpress SMART ERROR:",
+      error.response?.data || error.message
+    );
     const status = error.response?.status || 500;
 
     return res.status(status).json({
