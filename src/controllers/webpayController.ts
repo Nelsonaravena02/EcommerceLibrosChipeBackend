@@ -22,22 +22,37 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
   try {
     const { buyOrder, sessionId, amount }: CreateTransactionRequest = req.body;
 
+    // 🔍 Validaciones
     if (!buyOrder || !sessionId || !amount || amount <= 0) {
-      res.status(400).json({ error: 'Parámetros inválidos' });
+      console.log('❌ Validación falló:', { buyOrder, sessionId, amount });
+      res.status(400).json({ error: 'Parámetros inválidos: buyOrder, sessionId y amount requeridos' });
       return;
     }
 
+    // ✅ RETURN_URL directa al FRONTEND (público)
+    const RETURN_URL = 'https://ecommercechipelibros.pages.dev/webpay-return';
+
+    console.log('🔗 Creando transacción Webpay...');
+    console.log('📋 Datos:', { buyOrder, sessionId, amount, returnUrl: RETURN_URL });
+
+    // Configuración integración Transbank
     const options = new Options(
-      IntegrationCommerceCodes.WEBPAY_PLUS,  
-      IntegrationApiKeys.WEBPAY,             
-      Environment.Integration                 
+      IntegrationCommerceCodes.WEBPAY_PLUS,  // 597055555541
+      IntegrationApiKeys.WEBPAY,             // 579B532A7440BB0C9079B1E0E56A8CC57C66A198
+      Environment.Integration
     );
 
     const transaction = new WebpayPlus.Transaction(options);
 
-    console.log('🔄 Creando transacción Webpay...');
+    // Crear transacción
     const response = await transaction.create(buyOrder, sessionId, amount, RETURN_URL);
 
+    console.log('✅ Transacción CREADA exitosamente:');
+    console.log('🌐 URL Webpay:', response.url);
+    console.log('🔑 Token:', response.token);
+    console.log('📄 Return URL enviada:', RETURN_URL);
+
+    // Respuesta para frontend
     res.status(200).json({
       success: true,
       url: response.url,
@@ -46,14 +61,17 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
     });
 
   } catch (error: any) {
-    console.error('❌ Error Webpay:', error.message);
+    console.error('❌ Error creando transacción Webpay:', error.message);
+    console.error('📋 Detalles error:', error);
+    
     res.status(500).json({ 
       success: false, 
-      error: 'Error Webpay',
+      error: 'Error al crear transacción Webpay',
       details: error.message 
     });
   }
 };
+
 
 export const webpayReturn = async (req: Request, res: Response): Promise<void> => {
     console.log('🎯 === TRANSBANK RETURN HIT ===', req.query); // ← ÚNICO LOG
