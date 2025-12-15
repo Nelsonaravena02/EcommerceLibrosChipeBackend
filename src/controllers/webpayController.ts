@@ -104,8 +104,10 @@ export const webpayCommit = async (req: Request, res: Response): Promise<void> =
     
     console.log('💳 Commit resultado:', result);
     
+    const isSuccess = result.responseCode === 0;
+    
     res.json({
-      success: result.responseCode === 0,
+      success: isSuccess, 
       data: result
     });
     
@@ -114,3 +116,4 @@ export const webpayCommit = async (req: Request, res: Response): Promise<void> =
     res.status(500).json({ error: 'Commit falló' });
   }
 };
+
