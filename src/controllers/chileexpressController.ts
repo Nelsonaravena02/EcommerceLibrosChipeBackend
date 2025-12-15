@@ -15,7 +15,7 @@ interface AddressInput {
 }
 
 interface PackageInput {
-  weight: string;  // "0.7"
+  weight: string;
   height: string;
   width: string;
   length: string;
@@ -24,19 +24,18 @@ interface PackageInput {
 interface SmartQuoteRequestBody {
   address: AddressInput;
   package: PackageInput;
-  productType: number;    // 1 Doc / 3 Encomienda
+  productType: number;
   contentType: number;
   declaredWorth: string;
-  deliveryTime: number;   // 0 todos
+  deliveryTime: number;
 }
 
-// Normaliza strings: minúsculas, sin tildes/ñ, sin espacios extras
 const normalize = (s: string) =>
   s
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "") // quita tildes
-    .replace(/ñ/g, "n")              // por si acaso
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ñ/g, "n")
     .trim();
 
 export const getSmartShippingQuote = async (req: Request, res: Response) => {
@@ -66,7 +65,7 @@ export const getSmartShippingQuote = async (req: Request, res: Response) => {
       });
     }
 
-    // 1) Consultar coberturas por región (ej: RM) y type=0 (todas)
+    // 1) Coberturas por región
     const coverageResp = await axios.get(`${BASE_GEO}/coverage-areas`, {
       params: {
         RegionCode: address.regionCode,
@@ -87,12 +86,6 @@ export const getSmartShippingQuote = async (req: Request, res: Response) => {
       });
     }
 
-    // Para debug: puedes dejar esto mientras pruebas
-    // console.log(
-    //   "Coberturas ejemplo:",
-    //   coverageAreas.slice(0, 10).map((c) => ({ countyName: c.countyName, countyCode: c.countyCode }))
-    // );
-
     const target = normalize(address.countyName);
 
     const coverage = coverageAreas.find((c) => {
@@ -109,12 +102,12 @@ export const getSmartShippingQuote = async (req: Request, res: Response) => {
 
     const destinationCountyCode = String(coverage.countyCode);
 
-    // 2) Llamar al Cotizador con origin fijo y destino resuelto
+    // 2) Cotizador courier
     const quoteResp = await axios.post(
       `${BASE_RATING}/rates/courier`,
       {
-        originCountyCode: ORIGIN_SHIPPING.originCountyCode, // FIJO, interno
-        destinationCountyCode,                             // desde Coberturas
+        originCountyCode: ORIGIN_SHIPPING.originCountyCode,
+        destinationCountyCode,
         package: pkg,
         productType,
         contentType,
@@ -131,6 +124,29 @@ export const getSmartShippingQuote = async (req: Request, res: Response) => {
     );
 
     const options: any[] = quoteResp.data.data?.courierServiceOptions || [];
+
+    // 🔎 DEBUG: ver todas las opciones para este destino
+    console.log(
+      "Destino Chilexpress:",
+      {
+        regionCode: address.regionCode,
+        countyName: address.countyName,
+        destinationCountyCode,
+      },
+      "Opciones:",
+      JSON.stringify(
+        options.map((o) => ({
+          serviceTypeCode: o.serviceTypeCode,
+          serviceDescription: o.serviceDescription,
+          serviceValue: o.serviceValue,
+          deliveryType: o.deliveryType,
+          finalWeight: o.finalWeight,
+        })),
+        null,
+        2
+      )
+    );
+
     const best = options[0] || null;
 
     return res.json({
