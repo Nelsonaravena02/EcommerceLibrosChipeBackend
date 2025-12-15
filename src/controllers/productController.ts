@@ -30,37 +30,42 @@ export const obtenerProductos = async (req: Request, res: Response) => {
   }
 };
 
-export const obtenerProductosPorCategoria = async (req: Request, res: Response) =>{
-    try {
-        const categoriaId = parseInt(req.query.categoria as string);
+export const obtenerProductosPorCategoria = async (req: Request, res: Response) => {
+  try {
+    const categoriaNombre = req.query.categoria as string;
 
-        if (!categoriaId){
-            return res.status(400).json({error: 'Debe enviar un id de categoria válido'});
-        }
-
-        const productosFiltrados = await prisma.productos.findMany({
-            where: {
-                is_active: true,
-                id_categoria: categoriaId
-            },
-
-            include: {
-                categorias: true
-            }
-        });
-
-        const productosConCategoria = productosFiltrados.map(p =>({
-            ...p,
-            categoria: p.categorias?.nombre,
-        }));
-
-        res.json(productosConCategoria)
-            
-    } catch (error){
-        console.error(error);
-        res.status(500).json({error: "Error al obtener los productos por categoria"})
+    if (!categoriaNombre || categoriaNombre.trim() === '') {
+      return res.status(400).json({
+        error: 'Debe enviar un nombre de categoría válido'
+      });
     }
-}
+
+    const productos = await prisma.productos.findMany({
+      where: {
+        is_active: true,
+        categorias: {
+          nombre: categoriaNombre
+        }
+      },
+      include: {
+        categorias: true
+      }
+    });
+
+    const productosConCategoria = productos.map(p => ({
+      ...p,
+      categoria: p.categorias?.nombre
+    }));
+
+    res.json(productosConCategoria);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      error: 'Error al obtener los productos por categoría'
+    });
+  }
+};
 
 export const obtenerProductoPorID = async (req: Request, res: Response) => {
   try {
