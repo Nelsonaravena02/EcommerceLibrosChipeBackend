@@ -56,6 +56,8 @@ export const createTransaction = async (req: Request, res: Response): Promise<vo
 };
 
 export const webpayReturn = async (req: Request, res: Response): Promise<void> => {
+    console.log('🎯 === TRANSBANK RETURN HIT ===', req.query); // ← ÚNICO LOG
+
   try {
     const { token, TBK_ORDEN_COMPRA } = req.query;
     
