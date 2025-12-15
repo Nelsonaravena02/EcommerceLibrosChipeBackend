@@ -7,10 +7,10 @@ const BASE_GEO = "https://testservices.wschilexpress.com/georeference/api/v1.0";
 const BASE_RATING = "https://testservices.wschilexpress.com/rating/api/v1.0";
 
 interface AddressInput {
-  regionCode: string;    // ej: "RM"
-  countyName: string;    // ej: "Providencia"
-  streetName: string;    // opcional para futuro (georeference)
-  number: string;        // opcional
+  regionCode: string;   // ej: "RM"
+  countyName: string;   // ej: "Ñuñoa"
+  streetName: string;   // ej: "Avenida Providencia"
+  number: string;       // ej: "1245"
   postalCode?: string;
 }
 
@@ -30,6 +30,15 @@ interface SmartQuoteRequestBody {
   deliveryTime: number;   // 0 todos
 }
 
+// Normaliza strings: minúsculas, sin tildes/ñ, sin espacios extras
+const normalize = (s: string) =>
+  s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // quita tildes
+    .replace(/ñ/g, "n")              // por si acaso
+    .trim();
+
 export const getSmartShippingQuote = async (req: Request, res: Response) => {
   try {
     const body = req.body as SmartQuoteRequestBody;
@@ -41,8 +50,14 @@ export const getSmartShippingQuote = async (req: Request, res: Response) => {
       });
     }
 
-    const { address, package: pkg, productType, contentType, declaredWorth, deliveryTime } =
-      body;
+    const {
+      address,
+      package: pkg,
+      productType,
+      contentType,
+      declaredWorth,
+      deliveryTime,
+    } = body;
 
     if (!address.regionCode || !address.countyName) {
       return res.status(400).json({
@@ -51,24 +66,39 @@ export const getSmartShippingQuote = async (req: Request, res: Response) => {
       });
     }
 
-    // 1) Consultar coberturas por región (RM, R1, etc.)
+    // 1) Consultar coberturas por región (ej: RM) y type=0 (todas)
     const coverageResp = await axios.get(`${BASE_GEO}/coverage-areas`, {
       params: {
-        RegionCode: address.regionCode, // ej: "RM"
-        type: 0,                        // 0 = todas
+        RegionCode: address.regionCode,
+        type: 0,
       },
       headers: {
-        "Ocp-Apim-Subscription-Key": process.env.CHILEXPRESS_SUBSCRIPTION_KEY as string,
+        "Ocp-Apim-Subscription-Key": process.env
+          .CHILEXPRESS_SUBSCRIPTION_KEY as string,
       },
     });
 
     const coverageAreas: any[] = coverageResp.data.coverageAreas || [];
 
-    // Buscar coincidencia por nombre de comuna (case-insensitive)
-    const normalizedCounty = address.countyName.trim().toLowerCase();
-    const coverage = coverageAreas.find(
-      (c) => String(c.countyName).trim().toLowerCase() === normalizedCounty
-    );
+    if (!coverageAreas.length) {
+      return res.status(400).json({
+        success: false,
+        error: `No se encontraron coberturas para la región: ${address.regionCode}`,
+      });
+    }
+
+    // Para debug: puedes dejar esto mientras pruebas
+    // console.log(
+    //   "Coberturas ejemplo:",
+    //   coverageAreas.slice(0, 10).map((c) => ({ countyName: c.countyName, countyCode: c.countyCode }))
+    // );
+
+    const target = normalize(address.countyName);
+
+    const coverage = coverageAreas.find((c) => {
+      const name = normalize(String(c.countyName || ""));
+      return name === target || name.includes(target) || target.includes(name);
+    });
 
     if (!coverage) {
       return res.status(400).json({
@@ -77,14 +107,14 @@ export const getSmartShippingQuote = async (req: Request, res: Response) => {
       });
     }
 
-    const destinationCountyCode = coverage.countyCode as string;
+    const destinationCountyCode = String(coverage.countyCode);
 
     // 2) Llamar al Cotizador con origin fijo y destino resuelto
     const quoteResp = await axios.post(
       `${BASE_RATING}/rates/courier`,
       {
-        originCountyCode: ORIGIN_SHIPPING.originCountyCode,
-        destinationCountyCode,
+        originCountyCode: ORIGIN_SHIPPING.originCountyCode, // FIJO, interno
+        destinationCountyCode,                             // desde Coberturas
         package: pkg,
         productType,
         contentType,
@@ -94,7 +124,8 @@ export const getSmartShippingQuote = async (req: Request, res: Response) => {
       {
         headers: {
           "Content-Type": "application/json",
-          "Ocp-Apim-Subscription-Key": process.env.CHILEXPRESS_SUBSCRIPTION_KEY as string,
+          "Ocp-Apim-Subscription-Key": process.env
+            .CHILEXPRESS_SUBSCRIPTION_KEY as string,
         },
       }
     );
