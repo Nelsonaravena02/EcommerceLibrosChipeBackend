@@ -105,7 +105,7 @@ export const crearOrden = async (req: Request, res: Response) => {
 
     return res.status(201).json(ordenConRelaciones);
   } catch (error) {
-    console.error('Error al crear orden', error);
+    console.error('Error al crear orden (controller):', error);
     return res.status(500).json({ error: 'Error al crear orden' });
   }
 };
