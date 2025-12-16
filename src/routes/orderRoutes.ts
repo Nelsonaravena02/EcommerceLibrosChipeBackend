@@ -1,10 +1,8 @@
-// routes/ordenes.ts
-import express from 'express';
+import { Router } from 'express';
 import { crearOrden } from '../controllers/orderController.js';
 
-const router = express.Router();
+const router: Router = Router(); 
 
 router.post('/', crearOrden);
 
 export default router;
-
