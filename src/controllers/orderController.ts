@@ -4,19 +4,21 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+// =======================
 // Crear orden + items + pago
+// =======================
 export const crearOrden = async (req: Request, res: Response) => {
   try {
     const {
       id_cliente,
-      // id_location,      // ya no lo pedimos del body
-      id_status_ordenes,   // estado de la ORDEN: pendiente / enviado / cancelado / etc.
+      // id_location,        // ya no lo pedimos del body
+      id_status_ordenes,    // estado de la ORDEN: pendiente / enviado / cancelado / etc.
       costo_envio,
       id_comuna_destino,
       comments,
-      items,               // [{ id_producto, cantidad, precio_unitario_congelado, discount_aplicado_congelado }]
-      total_precio,        // total de la orden (incluye envío)
-      payment,             // datos del pago Webpay (monto, token, status_code, etc.)
+      items,                // [{ id_producto, cantidad, precio_unitario_congelado, discount_aplicado_congelado }]
+      total_precio,         // total de la orden (incluye envío)
+      payment,              // datos del pago Webpay (monto, token, response_code, etc.)
     } = req.body;
 
     if (!id_cliente || !id_status_ordenes) {
@@ -37,15 +39,14 @@ export const crearOrden = async (req: Request, res: Response) => {
       });
     }
 
-    // Crear la orden + items + pago en una sola transacción
     const nuevaOrden = await prisma.$transaction(async (tx) => {
-      // 1) Orden (estado de la ORDEN en id_status_ordenes)
+      // 1) Orden (estado de la ORDEN)
       const orden = await tx.ordenes.create({
         data: {
           id_cliente,
           total_precio,
           id_status_ordenes,
-          // Workaround: usar una location dummy existente mientras no tengas flow de direcciones
+          // mientras no tengas flow de direcciones real
           id_location: 1, // Asegúrate de que exista locations.id = 1
           costo_envio: costo_envio ?? null,
           id_comuna_destino: id_comuna_destino ?? null,
@@ -65,12 +66,22 @@ export const crearOrden = async (req: Request, res: Response) => {
         })),
       });
 
-      // 3) Pago (estado del PAGO en payment_statuses.status_code)
+      // 3) Pago: se registra aunque sea fallo, usando payment_statuses.status_code
       if (payment) {
-        // aquí esperas algo como payment.status_code = 'AUTHORIZED' | 'REJECTED' | 'PENDING'
-        const paymentStatus = await tx.payment_statuses.findFirst({
-          where: { status_code: payment.status_code || 'AUTHORIZED' },
+        const rawCode = payment.status_code ?? '0';
+        const statusCode = String(rawCode);
+
+        // intenta mapear el response_code/status_code que mandas desde WebpayReturn
+        let paymentStatus = await tx.payment_statuses.findFirst({
+          where: { status_code: statusCode },
         });
+
+        // si no existe ese código en payment_statuses, intenta usar un genérico 'ERROR'
+        if (!paymentStatus) {
+          paymentStatus = await tx.payment_statuses.findFirst({
+            where: { status_code: 'ERROR' },
+          });
+        }
 
         if (paymentStatus) {
           await tx.payments.create({
@@ -91,7 +102,6 @@ export const crearOrden = async (req: Request, res: Response) => {
       return orden;
     });
 
-    // devolver orden con relaciones
     const ordenConRelaciones = await prisma.ordenes.findUnique({
       where: { id: nuevaOrden.id },
       include: {
@@ -119,7 +129,9 @@ export const crearOrden = async (req: Request, res: Response) => {
   }
 };
 
-// Listar órdenes (con filtros/paginación)
+// =======================
+// Listar órdenes
+// =======================
 export const obtenerOrdenes = async (req: Request, res: Response) => {
   try {
     const {
@@ -251,7 +263,9 @@ export const obtenerOrdenes = async (req: Request, res: Response) => {
   }
 };
 
-// Obtener una orden por ID
+// =======================
+// Obtener orden por ID
+// =======================
 export const obtenerOrdenPorId = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -335,7 +349,9 @@ export const obtenerOrdenPorId = async (req: Request, res: Response) => {
   }
 };
 
-// Eliminar orden (opcional, si usas DELETE en frontend)
+// =======================
+// Eliminar orden (opcional)
+// =======================
 export const eliminarOrden = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
