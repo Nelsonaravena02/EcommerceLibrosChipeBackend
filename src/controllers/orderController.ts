@@ -378,3 +378,47 @@ export const eliminarOrden = async (req: Request, res: Response) => {
     return res.status(500).json({ error: 'Error al eliminar orden' });
   }
 };
+
+export const actualizarOrden = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { id_status_ordenes, comments } = req.body as {
+      id_status_ordenes?: number;
+      comments?: string;
+    };
+
+    if (!id || isNaN(Number(id))) {
+      return res.status(400).json({ error: 'ID de orden inválido' });
+    }
+
+    const dataToUpdate: any = {};
+
+    if (typeof id_status_ordenes === 'number') {
+      dataToUpdate.id_status_ordenes = id_status_ordenes;
+    }
+
+    if (typeof comments === 'string') {
+      dataToUpdate.comments = comments;
+    }
+
+    if (Object.keys(dataToUpdate).length === 0) {
+      return res
+        .status(400)
+        .json({ error: 'No se enviaron campos para actualizar' });
+    }
+
+    const ordenActualizada = await prisma.ordenes.update({
+      where: { id: Number(id) },
+      data: dataToUpdate,
+      include: {
+        status_ordenes: true,
+        clientes: true,
+      },
+    });
+
+    return res.json(ordenActualizada);
+  } catch (error) {
+    console.error('Error al actualizar orden:', error);
+    return res.status(500).json({ error: 'Error al actualizar orden' });
+  }
+};
