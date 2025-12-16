@@ -8,7 +8,7 @@ export const crearOrden = async (req: Request, res: Response) => {
   try {
     const {
       id_cliente,
-    //   id_location,
+      id_location,
       id_status_ordenes, // por ejemplo, el status "pagado"
       costo_envio,
       id_comuna_destino,
@@ -18,7 +18,7 @@ export const crearOrden = async (req: Request, res: Response) => {
       payment,           // datos del pago Webpay (monto, token, etc.)
     } = req.body;
 
-    if (!id_cliente || !id_status_ordenes) {
+    if (!id_cliente || !id_location || !id_status_ordenes) {
       return res.status(400).json({
         error: 'id_cliente, id_location e id_status_ordenes son obligatorios',
       });
@@ -43,7 +43,7 @@ export const crearOrden = async (req: Request, res: Response) => {
           id_cliente,
           total_precio,
           id_status_ordenes,
-        //   id_location,
+          id_location: 1,
           costo_envio: costo_envio ?? null,
           id_comuna_destino: id_comuna_destino ?? null,
           comments: comments ?? null,
@@ -105,7 +105,7 @@ export const crearOrden = async (req: Request, res: Response) => {
 
     return res.status(201).json(ordenConRelaciones);
   } catch (error) {
-    console.error('Error al crear orden (controller):', error);
+    console.error('Error al crear orden', error);
     return res.status(500).json({ error: 'Error al crear orden' });
   }
 };
