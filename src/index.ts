@@ -6,6 +6,7 @@ import { CreateUser } from './controllers/userAccountController.js';
 import authRouter from './routes/logingoogle.js';
 import webpayRoutes from './routes/webpay.js';
 import shippingRoutes from './routes/chilexpressRoutes.js';
+import ordenesRouter from './routes/orderRoutes.js';
 
 dotenv.config();
 
@@ -28,6 +29,8 @@ app.use('/api/auth', authRouter);
 
 app.use('/api/webpay', webpayRoutes);
 app.use("/api/shipping", shippingRoutes);
+app.use('/api/ordenes', ordenesRouter);
+
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {

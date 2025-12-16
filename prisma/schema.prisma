@@ -180,6 +180,13 @@ model productos {
   image_url       String?
   image_public_id String?
   rating          Int?
+  autor           String?
+  isbn            String             @db.VarChar(50)
+  encuadernacion  String?             @db.VarChar(50)
+  numero_paginas  Int?
+  editorial       String?             @db.VarChar(255)
+  idioma          String?             @db.VarChar(100)
+
   carrito         carrito[]
   favoritos       favoritos[]
   ordenes_items   ordenes_items[]
@@ -187,6 +194,7 @@ model productos {
 
   @@index([is_active], map: "idx_productos_is_active")
 }
+
 
 model regiones {
   id         Int       @id @default(autoincrement())
