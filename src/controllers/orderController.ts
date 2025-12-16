@@ -8,19 +8,19 @@ export const crearOrden = async (req: Request, res: Response) => {
   try {
     const {
       id_cliente,
-      id_location,
-      id_status_ordenes, // por ejemplo, el status "pagado"
+      // id_location,        // ya no lo pedimos del body
+      id_status_ordenes,    // por ejemplo, el status "pagado"
       costo_envio,
       id_comuna_destino,
       comments,
-      items,             // [{ id_producto, cantidad, precio_unitario_congelado, discount_aplicado_congelado }]
-      total_precio,      // total de la orden (incluye envío)
-      payment,           // datos del pago Webpay (monto, token, etc.)
+      items,                // [{ id_producto, cantidad, precio_unitario_congelado, discount_aplicado_congelado }]
+      total_precio,         // total de la orden (incluye envío)
+      payment,              // datos del pago Webpay (monto, token, etc.)
     } = req.body;
 
-    if (!id_cliente || !id_location || !id_status_ordenes) {
+    if (!id_cliente || !id_status_ordenes) {
       return res.status(400).json({
-        error: 'id_cliente, id_location e id_status_ordenes son obligatorios',
+        error: 'id_cliente e id_status_ordenes son obligatorios',
       });
     }
 
@@ -43,11 +43,11 @@ export const crearOrden = async (req: Request, res: Response) => {
           id_cliente,
           total_precio,
           id_status_ordenes,
-          id_location: 1,
+          // Workaround: usar una location dummy existente mientras no tengas flow de direcciones
+          id_location: 1, // Asegúrate de que exista locations.id = 1
           costo_envio: costo_envio ?? null,
           id_comuna_destino: id_comuna_destino ?? null,
           comments: comments ?? null,
-          // blue_express_code, access_token, etc. los puedes setear después si quieres
         },
       });
 
@@ -63,7 +63,6 @@ export const crearOrden = async (req: Request, res: Response) => {
       });
 
       if (payment) {
-        // necesitas tener el id de algún status de payment (por ejemplo, "pagado")
         const paymentStatus = await tx.payment_statuses.findFirst({
           where: { status_code: payment.status_code || 'PAID' },
         });
@@ -105,7 +104,7 @@ export const crearOrden = async (req: Request, res: Response) => {
 
     return res.status(201).json(ordenConRelaciones);
   } catch (error) {
-    console.error('Error al crear orden', error);
+    console.error('Error al crear orden (controller):', error);
     return res.status(500).json({ error: 'Error al crear orden' });
   }
 };
