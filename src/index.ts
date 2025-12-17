@@ -9,6 +9,7 @@ import shippingRoutes from './routes/chilexpressRoutes.js';
 import ordenesRouter from './routes/orderRoutes.js';
 import verificarEmail from './routes/emailRoutes.js';
 
+
 dotenv.config();
 
 const app = express();
