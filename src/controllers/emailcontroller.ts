@@ -1,7 +1,10 @@
 import type { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
-import nodemailer from 'nodemailer';
 import jwt from 'jsonwebtoken';
+import {
+  TransactionalEmailsApi,
+  SendSmtpEmail,
+} from '@getbrevo/brevo';
 
 const prisma = new PrismaClient();
 
@@ -10,27 +13,23 @@ if (!JWT_SECRET) {
   throw new Error('JWT_SECRET no está definido en las variables de entorno');
 }
 
-// ✅ Configurar Brevo SMTP (funciona perfecto en Railway)
-const transporter = nodemailer.createTransport({
-  host: 'smtp-relay.brevo.com',
-  port: 587,
-  secure: false,
-  auth: {
-    user: process.env.EMAIL_USER!,      // tu-email@dominio.com (verificado en Brevo)
-    pass: process.env.EMAIL_PASS!       // SMTP Pass de Brevo
-  },
-  tls: {
-    rejectUnauthorized: false
-  }
-});
+/* ========== Brevo API ========== */
+
+// Pasar apiKey en el constructor (forma simple)
+const brevoClient = new TransactionalEmailsApi(
+  process.env.BREVO_API_KEY as string
+);
 
 // Función para enviar email OTP
 export const enviarEmailOTP = async (email: string, otp: string, nombreCompleto: string) => {
-  await transporter.sendMail({
-    from: `"Chipelibros" <${process.env.EMAIL_USER}>`,
-    to: email,
+  const sendSmtpEmail: SendSmtpEmail = {
+    to: [{ email, name: nombreCompleto }],
+    sender: {
+      email: process.env.EMAIL_FROM as string,
+      name: process.env.EMAIL_FROM_NAME || 'Chipelibros',
+    },
     subject: 'Verifica tu cuenta en Chipelibros',
-    html: `
+    htmlContent: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #333;">¡Hola ${nombreCompleto}!</h2>
         <p>Tu código de verificación es:</p>
@@ -44,11 +43,14 @@ export const enviarEmailOTP = async (email: string, otp: string, nombreCompleto:
           Este email fue enviado automáticamente por Chipelibros.
         </p>
       </div>
-    `
-  });
+    `,
+  };
+
+  await brevoClient.sendTransacEmail(sendSmtpEmail);
 };
 
-// Función helper para generar token (exportada para reutilizar)
+/* ========== JWT helper ========== */
+
 export const generarToken = (cliente: { id: number; id_rol: number }) => {
   return jwt.sign(
     {
@@ -59,6 +61,8 @@ export const generarToken = (cliente: { id: number; id_rol: number }) => {
     { expiresIn: '7d' }
   );
 };
+
+/* ========== Verificar Email ========== */
 
 export const verificarEmail = async (req: Request, res: Response) => {
   try {
@@ -75,7 +79,7 @@ export const verificarEmail = async (req: Request, res: Response) => {
         is_email_verified: false
       },
       include: {
-        rol: true // Para obtener id_rol
+        rol: true
       }
     });
 
@@ -83,12 +87,10 @@ export const verificarEmail = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Código inválido o cuenta ya verificada' });
     }
 
-    // Verificar expiración
     if (!cliente.verification_expires_at || cliente.verification_expires_at < new Date()) {
       return res.status(400).json({ message: 'Código expirado. Regístrate de nuevo.' });
     }
 
-    // Verificar y limpiar
     await prisma.clientes.update({
       where: { id: cliente.id },
       data: {
