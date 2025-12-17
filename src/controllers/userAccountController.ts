@@ -3,6 +3,8 @@ import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import { OAuth2Client } from 'google-auth-library';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
+import { enviarEmailOTP } from './emailcontroller.js';
 
 const prisma = new PrismaClient();
 
@@ -78,18 +80,83 @@ export const CreateUser = async (req: Request, res: Response) => {
       },
     });
 
-    const token = generarToken({ id: nuevoCliente.id, id_rol: nuevoCliente.id_rol });
+    // Generar OTP de 5 dígitos y fecha de expiración (10 minutos)
+    const otp = crypto.randomInt(10000, 99999).toString();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutos
+
+    await prisma.clientes.update({
+      where: { id: nuevoCliente.id },
+      data: {
+        verification_token: otp,
+        verification_expires_at: expiresAt,
+        is_email_verified: false
+      }
+    });
+
+    await enviarEmailOTP(email, otp, `${nombre} ${apellido}`);
 
     return res.status(201).json({
-      message: 'Cliente creado correctamente',
-      cliente: nuevoCliente,
-      token,
+      message: 'Revisa tu email para verificar la cuenta',
+      cliente: { 
+        id: nuevoCliente.id, 
+        email: nuevoCliente.email 
+      }
+      // NO devuelves token hasta verificación
     });
   } catch (error) {
     console.error('Error al crear cliente:', error);
     return res.status(500).json({
       message: 'Error interno del servidor al crear el cliente',
     });
+  }
+};
+
+// ✅ NUEVO: Login con email/password
+export const loginCliente = async (req: Request, res: Response) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email y contraseña requeridos' });
+    }
+
+    const cliente = await prisma.clientes.findUnique({
+      where: { email },
+      include: { 
+        rol: true 
+      }
+    });
+
+    if (!cliente || !cliente.password) {
+      return res.status(401).json({ message: 'Credenciales inválidas' });
+    }
+
+    if (!cliente.is_email_verified) {
+      return res.status(403).json({ message: 'Verifica tu email primero' });
+    }
+
+    const passwordValido = await bcrypt.compare(password, cliente.password);
+    if (!passwordValido) {
+      return res.status(401).json({ message: 'Credenciales inválidas' });
+    }
+
+    const token = generarToken({ id: cliente.id, id_rol: cliente.id_rol });
+
+    return res.status(200).json({
+      message: 'Login exitoso',
+      cliente: {
+        id: cliente.id,
+        nombre: cliente.nombre,
+        apellido: cliente.apellido,
+        email: cliente.email,
+        phone: cliente.phone,
+        id_rol: cliente.id_rol
+      },
+      token
+    });
+  } catch (error) {
+    console.error('Error login:', error);
+    return res.status(500).json({ message: 'Error en login' });
   }
 };
 
@@ -197,4 +264,3 @@ export const loginConGoogleController = async (req: Request, res: Response) => {
     });
   }
 };
-
