@@ -10,12 +10,17 @@ if (!JWT_SECRET) {
   throw new Error('JWT_SECRET no está definido en las variables de entorno');
 }
 
-// Configurar transporter de email
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
+// ✅ Configurar Brevo SMTP (funciona perfecto en Railway)
+const transporter = nodemailer.createTransporter({
+  host: 'smtp-relay.brevo.com',
+  port: 587,
+  secure: false,
   auth: {
-    user: process.env.EMAIL_USER!,
-    pass: process.env.EMAIL_PASS!
+    user: process.env.EMAIL_USER!,      // tu-email@dominio.com (verificado en Brevo)
+    pass: process.env.EMAIL_PASS!       // SMTP Pass de Brevo
+  },
+  tls: {
+    rejectUnauthorized: false
   }
 });
 
