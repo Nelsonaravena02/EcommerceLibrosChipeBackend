@@ -11,7 +11,7 @@ if (!JWT_SECRET) {
 }
 
 // ✅ Configurar Brevo SMTP (funciona perfecto en Railway)
-const transporter = nodemailer.createTransporter({
+const transporter = nodemailer.createTransport({
   host: 'smtp-relay.brevo.com',
   port: 587,
   secure: false,
