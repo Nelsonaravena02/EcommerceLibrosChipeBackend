@@ -1,10 +1,7 @@
 import type { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import jwt from 'jsonwebtoken';
-import {
-  TransactionalEmailsApi,
-  SendSmtpEmail,
-} from '@getbrevo/brevo';
+import axios from 'axios';
 
 const prisma = new PrismaClient();
 
@@ -13,40 +10,51 @@ if (!JWT_SECRET) {
   throw new Error('JWT_SECRET no está definido en las variables de entorno');
 }
 
-/* ========== Brevo API ========== */
+/* ========== Brevo API vía HTTP (axios) ========== */
 
-// Pasar apiKey en el constructor (forma simple)
-const brevoClient = new TransactionalEmailsApi(
-  process.env.BREVO_API_KEY as string
-);
-
-// Función para enviar email OTP
+// Función para enviar email OTP usando la API HTTP de Brevo
 export const enviarEmailOTP = async (email: string, otp: string, nombreCompleto: string) => {
-  const sendSmtpEmail: SendSmtpEmail = {
-    to: [{ email, name: nombreCompleto }],
-    sender: {
-      email: process.env.EMAIL_FROM as string,
-      name: process.env.EMAIL_FROM_NAME || 'Chipelibros',
-    },
-    subject: 'Verifica tu cuenta en Chipelibros',
-    htmlContent: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #333;">¡Hola ${nombreCompleto}!</h2>
-        <p>Tu código de verificación es:</p>
-        <div style="background: #f8f9fa; padding: 20px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 10px; color: #007bff; border: 2px solid #007bff; border-radius: 8px; margin: 20px 0;">
-          ${otp}
-        </div>
-        <p><strong>Este código expira en 10 minutos.</strong></p>
-        <p>Si no solicitaste este código, ignora este email.</p>
-        <hr style="margin: 30px 0;">
-        <p style="color: #666; font-size: 12px;">
-          Este email fue enviado automáticamente por Chipelibros.
-        </p>
-      </div>
-    `,
-  };
+  const apiKey = process.env.BREVO_API_KEY as string;
+  const senderEmail = process.env.EMAIL_FROM as string;
+  const senderName = process.env.EMAIL_FROM_NAME || 'Chipelibros';
 
-  await brevoClient.sendTransacEmail(sendSmtpEmail);
+  await axios.post(
+    'https://api.brevo.com/v3/smtp/email',
+    {
+      sender: {
+        email: senderEmail,
+        name: senderName,
+      },
+      to: [
+        {
+          email,
+          name: nombreCompleto,
+        },
+      ],
+      subject: 'Verifica tu cuenta en Chipelibros',
+      htmlContent: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #333;">¡Hola ${nombreCompleto}!</h2>
+          <p>Tu código de verificación es:</p>
+          <div style="background: #f8f9fa; padding: 20px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 10px; color: #007bff; border: 2px solid #007bff; border-radius: 8px; margin: 20px 0;">
+            ${otp}
+          </div>
+          <p><strong>Este código expira en 10 minutos.</strong></p>
+          <p>Si no solicitaste este código, ignora este email.</p>
+          <hr style="margin: 30px 0;">
+          <p style="color: #666; font-size: 12px;">
+            Este email fue enviado automáticamente por Chipelibros.
+          </p>
+        </div>
+      `,
+    },
+    {
+      headers: {
+        'api-key': apiKey,
+        'Content-Type': 'application/json',
+      },
+    }
+  );
 };
 
 /* ========== JWT helper ========== */
