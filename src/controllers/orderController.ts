@@ -1,11 +1,140 @@
-// controllers/orderController.ts
 import type { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
+import jwt from 'jsonwebtoken';
 
 const prisma = new PrismaClient();
 
+const JWT_SECRET = process.env.JWT_SECRET as string | undefined;
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET no está definido en las variables de entorno');
+}
+
 // =======================
-// Crear orden + items + pago
+// ✅ NUEVO: Órdenes del cliente logueado
+// =======================
+export const obtenerOrdenesCliente = async (req: Request, res: Response) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    
+    if (!token) {
+      return res.status(401).json({ 
+        error: 'Token de autenticación requerido' 
+      });
+    }
+
+    // Verificar token y obtener clientId
+    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    const clientId = decoded.userId;
+
+    const {
+      page = '1',
+      limit = '10',
+    } = req.query;
+
+    const skip = (Number(page) - 1) * Number(limit);
+    const take = Number(limit);
+
+    const [ordenes, total] = await Promise.all([
+      prisma.ordenes.findMany({
+        skip,
+        take,
+        where: { 
+          id_cliente: clientId,  // ✅ SOLO ÓRDENES DEL CLIENTE
+        },
+        orderBy: { c_at: 'desc' },
+        include: {
+          ordenes_items: {
+            include: {
+              productos: {
+                select: {
+                  id: true,
+                  nombre: true,
+                  precio: true,
+                  precio_final: true,
+                  discount: true,
+                  image_url: true,
+                  image_public_id: true,
+                  isbn: true,
+                  autor: true,
+                  editorial: true,
+                  id_categoria: true,
+                },
+              },
+            },
+            orderBy: { id: 'asc' },
+          },
+          clientes: {
+            select: {
+              id: true,
+              nombre: true,
+              apellido: true,
+              email: true,
+              phone: true,
+            },
+          },
+          locations: {
+            select: {
+              id: true,
+              recipient_name: true,
+              recipient_phone: true,
+              address_line1: true,
+              address_line2: true,
+              city: true,
+              postal_code: true,
+            },
+          },
+          comunas: {
+            select: {
+              id: true,
+              nombre: true,
+              codigo_envio: true,
+            },
+          },
+          status_ordenes: {
+            select: {
+              id: true,
+              status: true,
+            },
+          },
+          payments: {
+            include: {
+              payment_statuses: {
+                select: {
+                  id: true,
+                  status_code: true,
+                  description: true,
+                },
+              },
+            },
+            orderBy: { payment_date: 'desc' },
+          },
+        },
+      }),
+      prisma.ordenes.count({ 
+        where: { id_cliente: clientId } 
+      }),
+    ]);
+
+    return res.json({
+      ordenes,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        pages: Math.ceil(total / Number(limit)),
+        hasNext: skip + take < total,
+        hasPrev: Number(page) > 1,
+      },
+    });
+
+  } catch (error: any) {
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({ error: 'Token inválido' });
+    }
+    console.error('Error obteniendo órdenes del cliente:', error);
+    return res.status(500).json({ error: 'Error al obtener órdenes' });
+  }
+};
 // =======================
 export const crearOrden = async (req: Request, res: Response) => {
   try {
@@ -422,3 +551,4 @@ export const actualizarOrden = async (req: Request, res: Response) => {
     return res.status(500).json({ error: 'Error al actualizar orden' });
   }
 };
+
