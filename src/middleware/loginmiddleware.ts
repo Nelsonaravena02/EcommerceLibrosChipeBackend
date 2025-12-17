@@ -13,12 +13,8 @@ export interface AuthRequest extends Request {
 
 export const authMiddleware = (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    // si lo envías en header:
     const authHeader = req.headers.authorization;
     const token = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
-
-    // o si usas cookie:
-    // const token = req.cookies?.auth_token;
 
     if (!token) {
       return res.status(401).json({ message: 'No autenticado' });
@@ -32,7 +28,14 @@ export const authMiddleware = (req: AuthRequest, res: Response, next: NextFuncti
     };
 
     next();
-  } catch (error) {
+  } catch {
     return res.status(401).json({ message: 'Token inválido o expirado' });
   }
+};
+
+export const adminOnly = (req: AuthRequest, res: Response, next: NextFunction) => {
+  if (!req.user || req.user.roleId !== 1) {
+    return res.status(403).json({ message: 'Acceso solo para administradores' });
+  }
+  next();
 };
