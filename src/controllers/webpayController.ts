@@ -1,8 +1,5 @@
 import type { Request, Response } from 'express';
 import pkg from 'transbank-sdk';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
 
 const {
   Environment,
@@ -23,10 +20,6 @@ export const createTransaction = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Parámetros inválidos' });
     }
 
-    const RETURN_URL =
-      process.env.WEBPAY_RETURN_URL ||
-      'https://ecommercechipelibros.pages.dev/webpay-return';
-
     const options = new Options(
       IntegrationCommerceCodes.WEBPAY_PLUS,
       IntegrationApiKeys.WEBPAY,
@@ -35,6 +28,10 @@ export const createTransaction = async (req: Request, res: Response) => {
 
     const transaction = new WebpayPlus.Transaction(options);
 
+    const RETURN_URL =
+      process.env.WEBPAY_RETURN_URL ||
+      'https://ecommercechipelibros.pages.dev/webpay-return';
+
     const response = await transaction.create(
       buyOrder,
       sessionId,
@@ -42,26 +39,38 @@ export const createTransaction = async (req: Request, res: Response) => {
       RETURN_URL
     );
 
-    return res.json({
+    res.json({
       success: true,
-      url: response.url,
       token: response.token,
+      url: response.url,
       buyOrder,
     });
   } catch (error: any) {
-    return res.status(500).json({ error: error.message });
+    console.error('WEBPAY CREATE ERROR:', error);
+    res.status(500).json({ error: error.message });
   }
 };
 
 /* ======================================================
-   WEBPAY COMMIT → CREA ORDEN REAL
+   RETURN (SOLO REDIRECCIÓN)
+====================================================== */
+export const webpayReturn = async (_req: Request, res: Response) => {
+  const frontendUrl =
+    process.env.FRONTEND_URL ||
+    'https://ecommercechipelibros.pages.dev';
+
+  res.redirect(`${frontendUrl}/webpay-return`);
+};
+
+/* ======================================================
+   COMMIT
 ====================================================== */
 export const webpayCommit = async (req: Request, res: Response) => {
   try {
-    const token = req.body?.token || req.query?.token;
+    const { token } = req.body;
 
-    if (!token || typeof token !== 'string') {
-      return res.status(400).json({ error: 'Token requerido' });
+    if (!token) {
+      return res.status(400).json({ success: false, error: 'Token requerido' });
     }
 
     const options = new Options(
@@ -73,72 +82,14 @@ export const webpayCommit = async (req: Request, res: Response) => {
     const transaction = new WebpayPlus.Transaction(options);
     const result = await transaction.commit(token);
 
-    console.log('💳 Commit RAW:', result);
+    const success = result.response_code === 0;
 
-    if (result.response_code !== 0) {
-      return res.json({ success: false, data: result });
-    }
-
-    if (!result.buy_order) {
-      return res.status(500).json({ error: 'buy_order inexistente' });
-    }
-
-    /* ======================================================
-       EVITAR DUPLICADOS (MUY IMPORTANTE)
-    ====================================================== */
-    const existe = await prisma.ordenes.findUnique({
-      where: { buy_order: result.buy_order },
-    });
-
-    if (existe) {
-      return res.json({
-        success: true,
-        message: 'Orden ya existente',
-        data: existe,
-      });
-    }
-
-    /* ======================================================
-       CREAR ORDEN + PAYMENT (TRANSACCIÓN)
-    ====================================================== */
-    const orden = await prisma.$transaction(async (tx) => {
-      const nuevaOrden = await tx.ordenes.create({
-        data: {
-          buy_order: result.buy_order,
-          total_precio: result.amount,
-          id_status_ordenes: 2, // PAGADO
-        },
-      });
-
-      await tx.payments.create({
-        data: {
-          id_orden: nuevaOrden.id,
-          id_payment_status: 1, // APROBADO
-          payment_method: 'webpay',
-          amount: result.amount,
-          transaction_id_prod: result.authorization_code ?? undefined,
-          transaction_id_inte: token,
-          provider: 'webpay',
-          metadata: result,
-        },
-      });
-
-      return nuevaOrden;
-    });
-
-    console.log('✅ ORDEN CREADA:', orden.id);
-
-    return res.json({
-      success: true,
-      message: 'Pago confirmado y orden creada',
-      data: {
-        ordenId: orden.id,
-        buy_order: orden.buy_order,
-        total: orden.total_precio,
-      },
+    res.json({
+      success,
+      data: result,
     });
   } catch (error: any) {
-    console.error('🔥 COMMIT ERROR:', error);
-    return res.status(500).json({ error: error.message });
+    console.error('WEBPAY COMMIT ERROR:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 };
