@@ -1,5 +1,8 @@
 import type { Request, Response } from 'express';
 import pkg from 'transbank-sdk';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 const {
   Environment,
@@ -12,17 +15,11 @@ const {
 /* ======================================================
    CREATE TRANSACTION
 ====================================================== */
-
 export const createTransaction = async (req: Request, res: Response) => {
   try {
     const { buyOrder, sessionId, amount } = req.body;
 
     if (!buyOrder || !sessionId || !amount || amount <= 0) {
-      console.error('❌ Parámetros inválidos:', {
-        buyOrder,
-        sessionId,
-        amount,
-      });
       return res.status(400).json({ error: 'Parámetros inválidos' });
     }
 
@@ -38,12 +35,6 @@ export const createTransaction = async (req: Request, res: Response) => {
 
     const transaction = new WebpayPlus.Transaction(options);
 
-    console.log('🧾 Creando transacción Webpay:', {
-      buyOrder,
-      sessionId,
-      amount,
-    });
-
     const response = await transaction.create(
       buyOrder,
       sessionId,
@@ -51,79 +42,26 @@ export const createTransaction = async (req: Request, res: Response) => {
       RETURN_URL
     );
 
-    console.log('✅ Transacción creada:', response);
-
-    return res.status(200).json({
+    return res.json({
       success: true,
       url: response.url,
       token: response.token,
       buyOrder,
     });
   } catch (error: any) {
-    console.error('🔥 CREATE TRANSACTION ERROR:', error);
-    return res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    return res.status(500).json({ error: error.message });
   }
 };
 
 /* ======================================================
-   WEBPAY RETURN (REDIRECT)
+   WEBPAY COMMIT → CREA ORDEN REAL
 ====================================================== */
-
-export const webpayReturn = async (req: Request, res: Response) => {
-  console.log('🔁 Webpay return hit:', req.query);
-
-  try {
-    const token =
-      req.query.token_ws ||
-      req.query.token ||
-      req.body?.token_ws;
-
-    const buyOrder = req.query.TBK_ORDEN_COMPRA;
-
-    if (!token) {
-      console.error('❌ Token faltante en return');
-      return res.redirect(
-        `${process.env.FRONTEND_URL}/pago-error`
-      );
-    }
-
-    const frontendUrl =
-      process.env.FRONTEND_URL ||
-      'https://ecommercechipelibros.pages.dev';
-
-    console.log('➡️ Redirigiendo a frontend:', {
-      token,
-      buyOrder,
-    });
-
-    return res.redirect(
-      `${frontendUrl}/pago-exitoso?token_ws=${token}`
-    );
-  } catch (error: any) {
-    console.error('🔥 WEBPAY RETURN ERROR:', error);
-    return res.redirect(
-      `${process.env.FRONTEND_URL}/pago-error`
-    );
-  }
-};
-
-/* ======================================================
-   WEBPAY COMMIT
-====================================================== */
-
 export const webpayCommit = async (req: Request, res: Response) => {
   try {
     const token = req.body?.token || req.query?.token;
 
     if (!token || typeof token !== 'string') {
-      console.error('❌ Token inválido en commit');
-      return res.status(400).json({
-        success: false,
-        error: 'Token requerido',
-      });
+      return res.status(400).json({ error: 'Token requerido' });
     }
 
     const options = new Options(
@@ -133,39 +71,74 @@ export const webpayCommit = async (req: Request, res: Response) => {
     );
 
     const transaction = new WebpayPlus.Transaction(options);
-
     const result = await transaction.commit(token);
 
     console.log('💳 Commit RAW:', result);
 
-    const success = result.response_code === 0;
+    if (result.response_code !== 0) {
+      return res.json({ success: false, data: result });
+    }
 
     if (!result.buy_order) {
-      console.error('❌ Commit sin buy_order');
-      return res.status(500).json({
-        success: false,
-        error: 'Commit inválido: falta buy_order',
+      return res.status(500).json({ error: 'buy_order inexistente' });
+    }
+
+    /* ======================================================
+       EVITAR DUPLICADOS (MUY IMPORTANTE)
+    ====================================================== */
+    const existe = await prisma.ordenes.findUnique({
+      where: { buy_order: result.buy_order },
+    });
+
+    if (existe) {
+      return res.json({
+        success: true,
+        message: 'Orden ya existente',
+        data: existe,
       });
     }
 
+    /* ======================================================
+       CREAR ORDEN + PAYMENT (TRANSACCIÓN)
+    ====================================================== */
+    const orden = await prisma.$transaction(async (tx) => {
+      const nuevaOrden = await tx.ordenes.create({
+        data: {
+          buy_order: result.buy_order,
+          total_precio: result.amount,
+          id_status_ordenes: 2, // PAGADO
+        },
+      });
+
+      await tx.payments.create({
+        data: {
+          id_orden: nuevaOrden.id,
+          id_payment_status: 1, // APROBADO
+          payment_method: 'webpay',
+          amount: result.amount,
+          transaction_id_prod: result.authorization_code ?? undefined,
+          transaction_id_inte: token,
+          provider: 'webpay',
+          metadata: result,
+        },
+      });
+
+      return nuevaOrden;
+    });
+
+    console.log('✅ ORDEN CREADA:', orden.id);
+
     return res.json({
-      success,
+      success: true,
+      message: 'Pago confirmado y orden creada',
       data: {
-        buy_order: result.buy_order,
-        amount: result.amount,
-        authorization_code: result.authorization_code,
-        payment_type_code: result.payment_type_code,
-        response_code: result.response_code,
-        transaction_date: result.transaction_date,
-        raw: result,
+        ordenId: orden.id,
+        buy_order: orden.buy_order,
+        total: orden.total_precio,
       },
-      message: success ? 'Pago autorizado' : 'Pago rechazado',
     });
   } catch (error: any) {
     console.error('🔥 COMMIT ERROR:', error);
-    return res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    return res.status(500).json({ error: error.message });
   }
 };
