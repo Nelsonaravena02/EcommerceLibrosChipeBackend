@@ -34,7 +34,7 @@ export const createTransaction = async (req: Request, res: Response) => {
         buy_order: buyOrder,              // 🔴 OBLIGATORIO
         id_cliente,
         total_precio: amount,
-        id_status_ordenes: 0,             // PENDIENTE
+        id_status_ordenes: 1,             // PENDIENTE
         comments: comments ?? 'Esperando pago Webpay',
       },
     });
