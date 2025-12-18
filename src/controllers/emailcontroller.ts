@@ -10,9 +10,6 @@ if (!JWT_SECRET) {
   throw new Error('JWT_SECRET no está definido en las variables de entorno');
 }
 
-/* ========== Brevo API vía HTTP (axios) ========== */
-
-// Función para enviar email OTP usando la API HTTP de Brevo
 export const enviarEmailOTP = async (email: string, otp: string, nombreCompleto: string) => {
   const apiKey = process.env.BREVO_API_KEY as string;
   const senderEmail = process.env.EMAIL_FROM as string;
@@ -57,7 +54,6 @@ export const enviarEmailOTP = async (email: string, otp: string, nombreCompleto:
   );
 };
 
-// ✅ NUEVA FUNCIÓN: Enviar comprobante de pago
 export const enviarComprobantePago = async (
   email: string,
   nombreCompleto: string,
@@ -150,7 +146,6 @@ export const enviarComprobantePago = async (
   );
 };
 
-/* ========== JWT helper ========== */
 
 export const generarToken = (cliente: { id: number; id_rol: number }) => {
   return jwt.sign(
@@ -163,7 +158,6 @@ export const generarToken = (cliente: { id: number; id_rol: number }) => {
   );
 };
 
-/* ========== Verificar Email ========== */
 
 export const verificarEmail = async (req: Request, res: Response) => {
   try {
@@ -221,7 +215,6 @@ export const verificarEmail = async (req: Request, res: Response) => {
   }
 };
 
-/* ========== ✅ NUEVO CONTROLLER: Enviar Comprobante de Pago ========== */
 
 export const enviarComprobanteController = async (req: Request, res: Response) => {
   try {
@@ -244,7 +237,6 @@ export const enviarComprobanteController = async (req: Request, res: Response) =
       });
     }
 
-    // Enviar el comprobante
     await enviarComprobantePago(
       email,
       nombreCompleto || 'Cliente Chipelibros',

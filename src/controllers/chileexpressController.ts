@@ -64,7 +64,6 @@ export const getSmartShippingQuote = async (req: Request, res: Response) => {
       });
     }
 
-    // 1) Coberturas por región
     const coverageResp = await axios.get(`${BASE_GEO}/coverage-areas`, {
       params: {
         RegionCode: address.regionCode,
@@ -144,7 +143,6 @@ export const getSmartShippingQuote = async (req: Request, res: Response) => {
       )
     );
 
-    // Mejor opción por defecto (primera o la más barata, como prefieras)
     const best =
       options.length > 0
         ? options.reduce((min, o) =>
@@ -177,7 +175,7 @@ export const getSmartShippingQuote = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error(
-      "❌ Chilexpress SMART ERROR:",
+      " Chilexpress SMART ERROR:",
       error.response?.data || error.message
     );
     const status = error.response?.status || 500;

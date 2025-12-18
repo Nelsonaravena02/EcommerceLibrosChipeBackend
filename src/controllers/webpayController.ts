@@ -26,22 +26,18 @@ export const createTransaction = async (req: Request, res: Response) => {
 
     const buyOrder = `ORD-${Date.now()}`;
 
-    /* ===============================
-       1️⃣ CREAR ORDEN PENDIENTE
-    =============================== */
+  
     const orden = await prisma.ordenes.create({
       data: {
-        buy_order: buyOrder,              // 🔴 OBLIGATORIO
+        buy_order: buyOrder,              
         id_cliente,
         total_precio: amount,
-        id_status_ordenes: 1,             // PENDIENTE
+        id_status_ordenes: 1,             
         comments: comments ?? 'Esperando pago Webpay',
       },
     });
 
-    /* ===============================
-       2️⃣ WEBPAY
-    =============================== */
+    
     const options = new Options(
       IntegrationCommerceCodes.WEBPAY_PLUS,
       IntegrationApiKeys.WEBPAY,
@@ -55,8 +51,8 @@ export const createTransaction = async (req: Request, res: Response) => {
       'https://ecommercechipelibros.pages.dev/webpay-return';
 
     const response = await transaction.create(
-      buyOrder,                   // ✔️ existe
-      orden.id.toString(),        // sessionId
+      buyOrder,                  
+      orden.id.toString(),     
       amount,
       RETURN_URL
     );
@@ -75,9 +71,6 @@ export const createTransaction = async (req: Request, res: Response) => {
 };
 
 
-/* ======================================================
-   RETURN (SOLO REDIRECCIÓN)
-====================================================== */
 export const webpayReturn = async (_req: Request, res: Response) => {
   const frontendUrl =
     process.env.FRONTEND_URL ||
@@ -86,10 +79,7 @@ export const webpayReturn = async (_req: Request, res: Response) => {
   res.redirect(`${frontendUrl}/webpay-return`);
 };
 
-/* ======================================================
-   COMMIT
-   👉 SOLO CONFIRMA Y ACTUALIZA ORDEN
-====================================================== */
+
 export const webpayCommit = async (req: Request, res: Response) => {
   try {
     const { token } = req.body;
@@ -111,9 +101,7 @@ export const webpayCommit = async (req: Request, res: Response) => {
       return res.json({ success: false, data: result });
     }
 
-    /* ===============================
-       1️⃣ ACTUALIZAR ORDEN
-    =============================== */
+  
     const orden = await prisma.ordenes.update({
       where: { buy_order: result.buy_order },
       data: {
@@ -122,9 +110,7 @@ export const webpayCommit = async (req: Request, res: Response) => {
       },
     });
 
-    /* ===============================
-       2️⃣ REGISTRAR PAYMENT
-    =============================== */
+ 
     const status = await prisma.payment_statuses.findFirst({
       where: { status_code: 'AUTHORIZED' },
     });

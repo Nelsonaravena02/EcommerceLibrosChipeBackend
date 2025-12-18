@@ -5,6 +5,7 @@ import { OAuth2Client } from 'google-auth-library';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { enviarEmailOTP } from './emailcontroller.js';
+import type { AuthRequest } from '../middleware/loginmiddleware.js';
 
 const prisma = new PrismaClient();
 
@@ -262,5 +263,172 @@ export const loginConGoogleController = async (req: Request, res: Response) => {
       message: 'Error interno en login con Google',
       error: error instanceof Error ? error.message : error,
     });
+  }
+};
+
+
+// ✅ OBTENER PERFIL
+export const getPerfilCliente = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id; // ✅ Usa 'id' de tu middleware
+    
+    if (!userId) {
+      return res.status(401).json({ message: 'No autorizado' });
+    }
+
+    const cliente = await prisma.clientes.findUnique({
+      where: { id: Number(userId) },
+      select: {
+        id: true,
+        nombre: true,
+        apellido: true,
+        email: true,
+        phone: true,
+        c_at: true,
+        is_email_verified: true
+      }
+    });
+
+    if (!cliente) {
+      return res.status(404).json({ message: 'Usuario no encontrado' });
+    }
+
+    return res.status(200).json({
+      message: 'Perfil obtenido exitosamente',
+      cliente
+    });
+  } catch (error) {
+    console.error('Error obteniendo perfil:', error);
+    return res.status(500).json({ message: 'Error interno del servidor' });
+  }
+};
+
+// ✅ ACTUALIZAR PERFIL
+export const updatePerfilCliente = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id; // ✅ Usa 'id'
+    
+    if (!userId) {
+      return res.status(401).json({ message: 'No autorizado' });
+    }
+
+    const { nombre, apellido, phone } = req.body;
+
+    if (!nombre && !apellido && !phone) {
+      return res.status(400).json({ 
+        message: 'Debe enviar al menos un campo: nombre, apellido o phone' 
+      });
+    }
+
+    const clienteActualizado = await prisma.clientes.update({
+      where: { id: Number(userId) },
+      data: {
+        nombre: nombre || undefined,
+        apellido: apellido || undefined,
+        phone: phone || undefined,
+        u_at: new Date()
+      },
+      select: {
+        id: true,
+        nombre: true,
+        apellido: true,
+        email: true,
+        phone: true,
+        id_rol: true,
+        c_at: true,
+        u_at: true
+      }
+    });
+
+    return res.status(200).json({
+      message: 'Perfil actualizado exitosamente',
+      cliente: clienteActualizado
+    });
+  } catch (error: any) {
+    if (error.code === 'P2025') {
+      return res.status(404).json({ message: 'Usuario no encontrado' });
+    }
+    console.error('Error actualizando perfil:', error);
+    return res.status(500).json({ message: 'Error interno del servidor' });
+  }
+};
+
+// ✅ CAMBIAR CONTRASEÑA
+export const cambiarPassword = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id; // ✅ Usa 'id'
+    
+    if (!userId) {
+      return res.status(401).json({ message: 'No autorizado' });
+    }
+
+    const { passwordActual, nuevaPassword, confirmarPassword } = req.body;
+
+    if (!passwordActual || !nuevaPassword || !confirmarPassword) {
+      return res.status(400).json({ message: 'Todos los campos son obligatorios' });
+    }
+
+    if (nuevaPassword !== confirmarPassword) {
+      return res.status(400).json({ message: 'Las contraseñas no coinciden' });
+    }
+
+    if (nuevaPassword.length < 6) {
+      return res.status(400).json({ message: 'La nueva contraseña debe tener al menos 6 caracteres' });
+    }
+
+    const cliente = await prisma.clientes.findUnique({
+      where: { id: Number(userId) }
+    });
+
+    if (!cliente?.password) {
+      return res.status(400).json({ message: 'Este usuario no tiene contraseña asociada' });
+    }
+
+    const passwordValido = await bcrypt.compare(passwordActual, cliente.password);
+    if (!passwordValido) {
+      return res.status(401).json({ message: 'Contraseña actual incorrecta' });
+    }
+
+    const hashedPassword = await bcrypt.hash(nuevaPassword, 10);
+
+    await prisma.clientes.update({
+      where: { id: Number(userId) },
+      data: { 
+        password: hashedPassword,
+        u_at: new Date()
+      }
+    });
+
+    return res.status(200).json({ 
+      message: 'Contraseña cambiada exitosamente' 
+    });
+  } catch (error) {
+    console.error('Error cambiando contraseña:', error);
+    return res.status(500).json({ message: 'Error interno del servidor' });
+  }
+};
+
+// ✅ ELIMINAR CUENTA
+export const eliminarCuenta = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id; // ✅ Usa 'id'
+    
+    if (!userId) {
+      return res.status(401).json({ message: 'No autorizado' });
+    }
+
+    await prisma.clientes.delete({
+      where: { id: Number(userId) }
+    });
+
+    return res.status(200).json({ 
+      message: 'Cuenta eliminada exitosamente. Todas las relaciones asociadas también fueron eliminadas.' 
+    });
+  } catch (error: any) {
+    if (error.code === 'P2025') {
+      return res.status(404).json({ message: 'Usuario no encontrado' });
+    }
+    console.error('Error eliminando cuenta:', error);
+    return res.status(500).json({ message: 'Error interno del servidor' });
   }
 };

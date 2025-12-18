@@ -11,13 +11,13 @@ export const obtenerProductos = async (req: Request, res: Response) => {
       include: {
         categorias: {
           select: {
-            nombre: true, // ✅ traer solo el nombre de la categoría
+            nombre: true, 
           },
         },
       },
     });
 
-    // Opcional: aplanar el objeto para frontend
+    
     const productosConCategoria = productos.map((p) => ({
       ...p,
       categoria: p.categorias?.nombre || null,
@@ -78,7 +78,7 @@ export const obtenerProductoPorID = async (req: Request, res: Response) => {
     const producto = await prisma.productos.findUnique({
       where: { id: product_id },
       include: {
-        categorias: true // opcional, puedes quitarlo si no lo quieres
+        categorias: true 
       }
     });
 
@@ -88,7 +88,7 @@ export const obtenerProductoPorID = async (req: Request, res: Response) => {
 
     const productoFinal = {
       ...producto,
-      categoria: producto.categorias?.nombre // opcional
+      categoria: producto.categorias?.nombre 
     };
 
     res.json(productoFinal);
@@ -204,8 +204,8 @@ export const actualizarProducto = async (req: Request, res: Response) => {
       numero_paginas,
       editorial,
       idioma,
-      tamano,       // 'XS' | 'S' | 'M' | 'L'
-      descuento,    // porcentaje
+      tamano,       
+      descuento,    
       image_url,
     } = req.body;
 
@@ -228,7 +228,6 @@ export const actualizarProducto = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Producto no encontrado' });
     }
 
-    // categoría
     let idCategoria: number | null = productoExistente.id_categoria ?? null;
 
     if (categoriaNombre && categoriaNombre.trim() !== '') {
@@ -252,7 +251,6 @@ export const actualizarProducto = async (req: Request, res: Response) => {
       precioNumber * (1 - descuentoNumber / 100),
     );
 
-    // construir data respetando opcionales
     const data: any = {
       nombre,
       descripcion,
@@ -315,7 +313,6 @@ export const eliminarProducto = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Producto no encontrado' });
     }
 
-    // Soft delete: marcar is_active = false
     await prisma.productos.update({
       where: { id: productId },
       data: {
@@ -324,7 +321,7 @@ export const eliminarProducto = async (req: Request, res: Response) => {
       },
     });
 
-    return res.status(204).send(); // 204 No Content en DELETE
+    return res.status(204).send(); 
   } catch (error) {
     console.error(error);
     return res

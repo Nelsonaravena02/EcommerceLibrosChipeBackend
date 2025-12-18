@@ -4,12 +4,10 @@ import type { AuthRequest } from '../middleware/loginmiddleware.js';
 
 const prisma = new PrismaClient();
 
-/* ======================================================
-   CREAR ORDEN (CLIENTE AUTENTICADO)
-   ====================================================== */
+
 export const crearOrden = async (req: AuthRequest, res: Response) => {
   try {
-    console.log('🟢 crearOrden ejecutado');
+    console.log('crearOrden ejecutado');
 
     if (!req.user?.id) {
       return res.status(401).json({ error: 'Usuario no autenticado' });
@@ -38,8 +36,7 @@ export const crearOrden = async (req: AuthRequest, res: Response) => {
     }
 
     const nuevaOrden = await prisma.$transaction(async (tx) => {
-      /* ---------------- ORDEN ---------------- */
-      const buyOrder = `ORD-${Date.now()}`; // genera un string único
+      const buyOrder = `ORD-${Date.now()}`; 
 
       const orden = await tx.ordenes.create({
         data: {
@@ -47,14 +44,13 @@ export const crearOrden = async (req: AuthRequest, res: Response) => {
           id_cliente: req.user!.id,
           total_precio,
           id_status_ordenes,
-          id_location: 1, // placeholder mientras no tengas direcciones
+          id_location: 1, 
           costo_envio: costo_envio ?? null,
           id_comuna_destino: id_comuna_destino ?? null,
           comments: comments ?? null,
         },
       });
 
-      /* ---------------- ITEMS ---------------- */
       await tx.ordenes_items.createMany({
         data: items.map((item: any) => ({
           id_orden: orden.id,
@@ -66,7 +62,6 @@ export const crearOrden = async (req: AuthRequest, res: Response) => {
         })),
       });
 
-      /* ---------------- PAGO ---------------- */
       if (payment) {
         const statusCode = String(payment.status_code ?? '0');
 
@@ -113,14 +108,12 @@ export const crearOrden = async (req: AuthRequest, res: Response) => {
 
     return res.status(201).json(ordenCompleta);
   } catch (error) {
-    console.error('❌ Error al crear orden:', error);
+    console.error('Error al crear orden:', error);
     return res.status(500).json({ error: 'Error al crear orden' });
   }
 };
 
-/* ======================================================
-   ÓRDENES DEL CLIENTE LOGUEADO
-   ====================================================== */
+
 export const obtenerOrdenesCliente = async (req: AuthRequest, res: Response) => {
   try {
     if (!req.user?.id) {
@@ -193,14 +186,11 @@ export const obtenerOrdenesCliente = async (req: AuthRequest, res: Response) => 
       },
     });
   } catch (error) {
-    console.error('❌ Error obteniendo órdenes del cliente:', error);
+    console.error('Error obteniendo órdenes del cliente:', error);
     return res.status(500).json({ error: 'Error al obtener órdenes' });
   }
 };
 
-/* ======================================================
-   LISTAR TODAS LAS ÓRDENES (ADMIN)
-   ====================================================== */
 export const obtenerOrdenes = async (req: Request, res: Response) => {
   try {
     const { page = '1', limit = '10', id_cliente, id_status_ordenes } = req.query;
@@ -240,14 +230,11 @@ export const obtenerOrdenes = async (req: Request, res: Response) => {
       },
     });
   } catch (error) {
-    console.error('❌ Error al obtener órdenes:', error);
+    console.error('Error al obtener órdenes:', error);
     return res.status(500).json({ error: 'Error al obtener órdenes' });
   }
 };
 
-/* ======================================================
-   OBTENER ORDEN POR ID
-   ====================================================== */
 export const obtenerOrdenPorId = async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);
@@ -273,14 +260,11 @@ export const obtenerOrdenPorId = async (req: Request, res: Response) => {
 
     return res.json(orden);
   } catch (error) {
-    console.error('❌ Error al obtener orden:', error);
+    console.error('Error al obtener orden:', error);
     return res.status(500).json({ error: 'Error al obtener orden' });
   }
 };
 
-/* ======================================================
-   ACTUALIZAR ORDEN (ADMIN)
-   ====================================================== */
 export const actualizarOrden = async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);
@@ -306,14 +290,12 @@ export const actualizarOrden = async (req: Request, res: Response) => {
 
     return res.json(orden);
   } catch (error) {
-    console.error('❌ Error al actualizar orden:', error);
+    console.error('Error al actualizar orden:', error);
     return res.status(500).json({ error: 'Error al actualizar orden' });
   }
 };
 
-/* ======================================================
-   ELIMINAR ORDEN (ADMIN)
-   ====================================================== */
+
 export const eliminarOrden = async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);
@@ -329,7 +311,7 @@ export const eliminarOrden = async (req: Request, res: Response) => {
 
     return res.json({ message: 'Orden eliminada correctamente' });
   } catch (error) {
-    console.error('❌ Error al eliminar orden:', error);
+    console.error('Error al eliminar orden:', error);
     return res.status(500).json({ error: 'Error al eliminar orden' });
   }
 };

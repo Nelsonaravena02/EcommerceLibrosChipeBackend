@@ -1,4 +1,3 @@
-// src/routes/webpay.ts - COMPLETO
 import { Router } from 'express';
 import { 
   createTransaction, 

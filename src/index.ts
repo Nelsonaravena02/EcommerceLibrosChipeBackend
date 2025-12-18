@@ -2,13 +2,13 @@ import express from 'express';
 import router from './routes/productosRoutes.js';
 import dotenv from 'dotenv';
 import cors from 'cors';
-import { CreateUser, loginCliente } from './controllers/userAccountController.js'; // ✅ Importar loginCliente
+import { CreateUser, loginCliente } from './controllers/userAccountController.js';
 import authRouter from './routes/logingoogle.js';
 import webpayRoutes from './routes/webpay.js';
 import shippingRoutes from './routes/chilexpressRoutes.js';
 import ordenesRouter from './routes/orderRoutes.js';
 import verificarEmail from './routes/emailRoutes.js';
-
+import clientesRouter from './routes/userRoutes.js'; 
 
 dotenv.config();
 
@@ -34,6 +34,8 @@ app.use('/api/webpay', webpayRoutes);
 app.use("/api/shipping", shippingRoutes);
 app.use('/api/ordenes', ordenesRouter);
 app.use('/api', verificarEmail);
+
+app.use('/api/clientes', clientesRouter);
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
