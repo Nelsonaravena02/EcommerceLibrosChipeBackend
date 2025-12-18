@@ -1,34 +1,34 @@
 import type { Request, Response } from 'express';
 import pkg from 'transbank-sdk';
 
-const { 
-  Environment, 
-  IntegrationApiKeys, 
-  IntegrationCommerceCodes, 
-  Options, 
-  WebpayPlus 
+const {
+  Environment,
+  IntegrationApiKeys,
+  IntegrationCommerceCodes,
+  Options,
+  WebpayPlus,
 } = pkg;
 
-interface CreateTransactionRequest {
-  buyOrder: string;
-  sessionId: string;
-  amount: number;
-}
-
+/* ======================================================
+   CREATE TRANSACTION
+====================================================== */
 
 export const createTransaction = async (req: Request, res: Response) => {
   try {
-    const { buyOrder, sessionId, amount }: CreateTransactionRequest = req.body;
+    const { buyOrder, sessionId, amount } = req.body;
 
     if (!buyOrder || !sessionId || !amount || amount <= 0) {
-      console.log('Validación falló:', { buyOrder, sessionId, amount });
-      res.status(400).json({ error: 'Parámetros inválidos' });
-      return;
+      console.error('❌ Parámetros inválidos:', {
+        buyOrder,
+        sessionId,
+        amount,
+      });
+      return res.status(400).json({ error: 'Parámetros inválidos' });
     }
 
-    const RETURN_URL = 'https://ecommercechipelibros.pages.dev/webpay-return';
-
-    console.log('Creando transacción →', RETURN_URL);
+    const RETURN_URL =
+      process.env.WEBPAY_RETURN_URL ||
+      'https://ecommercechipelibros.pages.dev/webpay-return';
 
     const options = new Options(
       IntegrationCommerceCodes.WEBPAY_PLUS,
@@ -37,58 +37,93 @@ export const createTransaction = async (req: Request, res: Response) => {
     );
 
     const transaction = new WebpayPlus.Transaction(options);
-    const response = await transaction.create(buyOrder, sessionId, amount, RETURN_URL);
 
-    console.log('CREADA:', response.url);
-    console.log('Transbank irá a:', RETURN_URL);
+    console.log('🧾 Creando transacción Webpay:', {
+      buyOrder,
+      sessionId,
+      amount,
+    });
 
-    res.status(200).json({
+    const response = await transaction.create(
+      buyOrder,
+      sessionId,
+      amount,
+      RETURN_URL
+    );
+
+    console.log('✅ Transacción creada:', response);
+
+    return res.status(200).json({
       success: true,
       url: response.url,
       token: response.token,
-      buyOrder: response.buyOrder
+      buyOrder,
     });
-
   } catch (error: any) {
-    console.error('CREATE ERROR:', error.message);
-    res.status(500).json({ error: error.message });
+    console.error('🔥 CREATE TRANSACTION ERROR:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
   }
 };
 
-
+/* ======================================================
+   WEBPAY RETURN (REDIRECT)
+====================================================== */
 
 export const webpayReturn = async (req: Request, res: Response) => {
-    console.log(' === TRANSBANK RETURN HIT ===', req.query); 
+  console.log('🔁 Webpay return hit:', req.query);
 
   try {
-    const { token, TBK_ORDEN_COMPRA } = req.query;
-    
+    const token =
+      req.query.token_ws ||
+      req.query.token ||
+      req.body?.token_ws;
+
+    const buyOrder = req.query.TBK_ORDEN_COMPRA;
+
     if (!token) {
-      res.status(400).json({ error: 'Token faltante' });
-      return;
+      console.error('❌ Token faltante en return');
+      return res.redirect(
+        `${process.env.FRONTEND_URL}/pago-error`
+      );
     }
 
-    res.cookie('webpayToken', token as string, { httpOnly: true });
-    
-    console.log('Transbank retorno:', { token: token?.toString(), buyOrder: TBK_ORDEN_COMPRA });
-    
-    const frontendUrl = process.env.FRONTEND_URL || 'https://ecommercechipelibros.pages.dev';
-    res.redirect(`${frontendUrl}/pago-exitoso?order=${TBK_ORDEN_COMPRA}&token=${token}`);
-    
+    const frontendUrl =
+      process.env.FRONTEND_URL ||
+      'https://ecommercechipelibros.pages.dev';
+
+    console.log('➡️ Redirigiendo a frontend:', {
+      token,
+      buyOrder,
+    });
+
+    return res.redirect(
+      `${frontendUrl}/pago-exitoso?token_ws=${token}`
+    );
   } catch (error: any) {
-    console.error('Error webpay return:', error);
-    res.redirect(`${process.env.FRONTEND_URL || 'https://ecommercechipelibros.pages.dev'}/pago-error`);
+    console.error('🔥 WEBPAY RETURN ERROR:', error);
+    return res.redirect(
+      `${process.env.FRONTEND_URL}/pago-error`
+    );
   }
 };
 
+/* ======================================================
+   WEBPAY COMMIT
+====================================================== */
 
-
-export const webpayCommit = async (req: Request, res: Response) => { 
+export const webpayCommit = async (req: Request, res: Response) => {
   try {
-    const { token } = req.body || req.query;
-    
-    if (!token) {
-      return res.status(400).json({ error: 'Token requerido' });
+    const token = req.body?.token || req.query?.token;
+
+    if (!token || typeof token !== 'string') {
+      console.error('❌ Token inválido en commit');
+      return res.status(400).json({
+        success: false,
+        error: 'Token requerido',
+      });
     }
 
     const options = new Options(
@@ -96,31 +131,41 @@ export const webpayCommit = async (req: Request, res: Response) => {
       IntegrationApiKeys.WEBPAY,
       Environment.Integration
     );
-    
+
     const transaction = new WebpayPlus.Transaction(options);
-    const result = await transaction.commit(token as string);
-    
+
+    const result = await transaction.commit(token);
+
     console.log('💳 Commit RAW:', result);
-    
+
     const success = result.response_code === 0;
-    
-    console.log('SUCCESS:', success, 'response_code:', result.response_code);
-    
-    res.json({
+
+    if (!result.buy_order) {
+      console.error('❌ Commit sin buy_order');
+      return res.status(500).json({
+        success: false,
+        error: 'Commit inválido: falta buy_order',
+      });
+    }
+
+    return res.json({
       success,
-      data: result,
-      message: success ? 'Pago autorizado' : 'Pago rechazado'
+      data: {
+        buy_order: result.buy_order,
+        amount: result.amount,
+        authorization_code: result.authorization_code,
+        payment_type_code: result.payment_type_code,
+        response_code: result.response_code,
+        transaction_date: result.transaction_date,
+        raw: result,
+      },
+      message: success ? 'Pago autorizado' : 'Pago rechazado',
     });
-    
   } catch (error: any) {
-    console.error('Commit ERROR:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message 
+    console.error('🔥 COMMIT ERROR:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
     });
   }
 };
-
-
-
-
