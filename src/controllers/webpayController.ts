@@ -1,5 +1,8 @@
 import type { Request, Response } from 'express';
 import pkg from 'transbank-sdk';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 const {
   Environment,
@@ -52,7 +55,7 @@ export const createTransaction = async (req: Request, res: Response) => {
 };
 
 /* ======================================================
-   RETURN (SOLO REDIRECCIÓN)
+   RETURN
 ====================================================== */
 export const webpayReturn = async (_req: Request, res: Response) => {
   const frontendUrl =
@@ -63,7 +66,7 @@ export const webpayReturn = async (_req: Request, res: Response) => {
 };
 
 /* ======================================================
-   COMMIT
+   COMMIT (🔥 AQUÍ SE CREA LA ORDEN 🔥)
 ====================================================== */
 export const webpayCommit = async (req: Request, res: Response) => {
   try {
@@ -82,12 +85,52 @@ export const webpayCommit = async (req: Request, res: Response) => {
     const transaction = new WebpayPlus.Transaction(options);
     const result = await transaction.commit(token);
 
-    const success = result.response_code === 0;
+    if (result.response_code !== 0) {
+      return res.json({ success: false, data: result });
+    }
 
-    res.json({
-      success,
-      data: result,
+    /* ===============================
+       CREAR ORDEN
+    =============================== */
+    const orden = await prisma.ordenes.create({
+      data: {
+        buy_order: result.buy_order,
+        total_precio: result.amount,
+        id_status_ordenes: 1, // PAGADA
+        comments: 'Pago confirmado vía Webpay',
+      },
     });
+
+    /* ===============================
+       CREAR PAYMENT
+    =============================== */
+    const status = await prisma.payment_statuses.findFirst({
+      where: { status_code: 'AUTHORIZED' },
+    });
+
+    if (status) {
+      await prisma.payments.create({
+        data: {
+          id_orden: orden.id,
+          id_payment_status: status.id,
+          payment_method: 'webpay',
+          amount: result.amount,
+          transaction_id_inte: result.authorization_code,
+          provider: 'transbank',
+          metadata: result,
+        },
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        orden_id: orden.id,
+        buy_order: orden.buy_order,
+        amount: orden.total_precio,
+      },
+    });
+
   } catch (error: any) {
     console.error('WEBPAY COMMIT ERROR:', error);
     res.status(500).json({ success: false, error: error.message });
