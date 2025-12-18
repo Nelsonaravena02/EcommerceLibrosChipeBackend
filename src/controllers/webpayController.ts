@@ -14,15 +14,34 @@ const {
 
 /* ======================================================
    CREATE TRANSACTION
+   👉 AQUÍ SE CREA LA ORDEN (PENDIENTE)
 ====================================================== */
 export const createTransaction = async (req: Request, res: Response) => {
   try {
-    const { buyOrder, sessionId, amount } = req.body;
+    const { id_cliente, amount, comments } = req.body;
 
-    if (!buyOrder || !sessionId || !amount || amount <= 0) {
+    if (!id_cliente || !amount || amount <= 0) {
       return res.status(400).json({ error: 'Parámetros inválidos' });
     }
 
+    const buyOrder = `ORD-${Date.now()}`;
+
+    /* ===============================
+       1️⃣ CREAR ORDEN PENDIENTE
+    =============================== */
+    const orden = await prisma.ordenes.create({
+      data: {
+        buy_order: buyOrder,              // 🔴 OBLIGATORIO
+        id_cliente,
+        total_precio: amount,
+        id_status_ordenes: 0,             // PENDIENTE
+        comments: comments ?? 'Esperando pago Webpay',
+      },
+    });
+
+    /* ===============================
+       2️⃣ WEBPAY
+    =============================== */
     const options = new Options(
       IntegrationCommerceCodes.WEBPAY_PLUS,
       IntegrationApiKeys.WEBPAY,
@@ -36,26 +55,28 @@ export const createTransaction = async (req: Request, res: Response) => {
       'https://ecommercechipelibros.pages.dev/webpay-return';
 
     const response = await transaction.create(
-      buyOrder,
-      sessionId,
+      buyOrder,                   // ✔️ existe
+      orden.id.toString(),        // sessionId
       amount,
       RETURN_URL
     );
 
-    res.json({
+    return res.json({
       success: true,
       token: response.token,
       url: response.url,
       buyOrder,
     });
+
   } catch (error: any) {
     console.error('WEBPAY CREATE ERROR:', error);
-    res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: error.message });
   }
 };
 
+
 /* ======================================================
-   RETURN
+   RETURN (SOLO REDIRECCIÓN)
 ====================================================== */
 export const webpayReturn = async (_req: Request, res: Response) => {
   const frontendUrl =
@@ -66,7 +87,8 @@ export const webpayReturn = async (_req: Request, res: Response) => {
 };
 
 /* ======================================================
-   COMMIT (🔥 AQUÍ SE CREA LA ORDEN 🔥)
+   COMMIT
+   👉 SOLO CONFIRMA Y ACTUALIZA ORDEN
 ====================================================== */
 export const webpayCommit = async (req: Request, res: Response) => {
   try {
@@ -90,19 +112,18 @@ export const webpayCommit = async (req: Request, res: Response) => {
     }
 
     /* ===============================
-       CREAR ORDEN
+       1️⃣ ACTUALIZAR ORDEN
     =============================== */
-    const orden = await prisma.ordenes.create({
+    const orden = await prisma.ordenes.update({
+      where: { buy_order: result.buy_order },
       data: {
-        buy_order: result.buy_order,
-        total_precio: result.amount,
-        id_status_ordenes: 1, // PAGADA
+        id_status_ordenes: 1, // ✅ PAGADA
         comments: 'Pago confirmado vía Webpay',
       },
     });
 
     /* ===============================
-       CREAR PAYMENT
+       2️⃣ REGISTRAR PAYMENT
     =============================== */
     const status = await prisma.payment_statuses.findFirst({
       where: { status_code: 'AUTHORIZED' },
@@ -117,7 +138,7 @@ export const webpayCommit = async (req: Request, res: Response) => {
           amount: result.amount,
           transaction_id_inte: result.authorization_code,
           provider: 'transbank',
-          metadata: result,
+          metadata: result as any,
         },
       });
     }
@@ -133,6 +154,6 @@ export const webpayCommit = async (req: Request, res: Response) => {
 
   } catch (error: any) {
     console.error('WEBPAY COMMIT ERROR:', error);
-    res.status(500).json({ success: false, error: error.message });
+    return res.status(500).json({ success: false, error: error.message });
   }
 };

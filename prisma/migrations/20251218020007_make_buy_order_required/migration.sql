@@ -35,6 +35,7 @@ CREATE TABLE "clientes" (
     "verification_expires_at" TIMESTAMPTZ(6),
     "reset_token" VARCHAR(255),
     "reset_token_expires_at" TIMESTAMPTZ(6),
+    "apellido" VARCHAR(255),
 
     CONSTRAINT "clientes_pkey" PRIMARY KEY ("id")
 );
@@ -95,15 +96,16 @@ CREATE TABLE "ordenes" (
     "id_cliente" INTEGER,
     "total_precio" INTEGER NOT NULL,
     "id_status_ordenes" INTEGER NOT NULL,
-    "c_at" TIMESTAMP(6) DEFAULT CURRENT_TIMESTAMP,
-    "u_at" TIMESTAMP(6) DEFAULT CURRENT_TIMESTAMP,
-    "id_location" INTEGER NOT NULL,
+    "c_at" TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP,
+    "u_at" TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP,
+    "id_location" INTEGER,
     "costo_envio" INTEGER,
     "id_comuna_destino" INTEGER,
     "blue_express_code" VARCHAR(255),
     "access_token" TEXT,
     "short_access_token" VARCHAR(8),
     "comments" TEXT,
+    "buy_order" TEXT NOT NULL,
 
     CONSTRAINT "ordenes_pkey" PRIMARY KEY ("id")
 );
@@ -163,6 +165,12 @@ CREATE TABLE "productos" (
     "image_url" TEXT,
     "image_public_id" TEXT,
     "rating" INTEGER,
+    "autor" TEXT,
+    "editorial" VARCHAR(255),
+    "encuadernacion" VARCHAR(50),
+    "idioma" VARCHAR(100),
+    "isbn" VARCHAR(50) NOT NULL,
+    "numero_paginas" INTEGER,
 
     CONSTRAINT "productos_pkey" PRIMARY KEY ("id")
 );
@@ -220,10 +228,7 @@ CREATE INDEX "idx_location_id_cliente" ON "locations"("id_cliente");
 CREATE UNIQUE INDEX "unique_ordenes_access_token" ON "ordenes"("access_token");
 
 -- CreateIndex
-CREATE INDEX "idx_ordenes_access_token" ON "ordenes"("access_token");
-
--- CreateIndex
-CREATE INDEX "idx_ordenes_id_comuna_destino" ON "ordenes"("id_comuna_destino");
+CREATE UNIQUE INDEX "ordenes_buy_order_key" ON "ordenes"("buy_order");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "payment_statuses_status_code_key" ON "payment_statuses"("status_code");
@@ -283,7 +288,7 @@ ALTER TABLE "ordenes" ADD CONSTRAINT "fk_ordenes_cliente" FOREIGN KEY ("id_clien
 ALTER TABLE "ordenes" ADD CONSTRAINT "fk_ordenes_comuna_destino" FOREIGN KEY ("id_comuna_destino") REFERENCES "comunas"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
 
 -- AddForeignKey
-ALTER TABLE "ordenes" ADD CONSTRAINT "fk_ordenes_location" FOREIGN KEY ("id_location") REFERENCES "locations"("id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE "ordenes" ADD CONSTRAINT "fk_ordenes_location" FOREIGN KEY ("id_location") REFERENCES "locations"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
 
 -- AddForeignKey
 ALTER TABLE "ordenes" ADD CONSTRAINT "fk_ordenes_status_ordenes" FOREIGN KEY ("id_status_ordenes") REFERENCES "status_ordenes"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
