@@ -39,8 +39,11 @@ export const crearOrden = async (req: AuthRequest, res: Response) => {
 
     const nuevaOrden = await prisma.$transaction(async (tx) => {
       /* ---------------- ORDEN ---------------- */
+      const buyOrder = `ORD-${Date.now()}`; // genera un string único
+
       const orden = await tx.ordenes.create({
         data: {
+          buy_order:buyOrder,
           id_cliente: req.user!.id,
           total_precio,
           id_status_ordenes,
