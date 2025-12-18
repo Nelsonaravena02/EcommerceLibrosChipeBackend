@@ -19,7 +19,7 @@ router.get('/cliente', authMiddleware, obtenerOrdenesCliente);
 router.get('/', obtenerOrdenes);
 
 // ✅ Resto SIN CAMBIOS
-router.post('/', authMiddleware, crearOrden);
+router.post('/', authMiddleware,crearOrden);
 router.get('/:id', obtenerOrdenPorId);
 router.put('/:id', authMiddleware, adminOnly, actualizarOrden);
 router.delete('/:id', authMiddleware, adminOnly, eliminarOrden);

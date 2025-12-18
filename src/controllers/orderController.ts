@@ -1,189 +1,57 @@
 import type { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
-import jwt from 'jsonwebtoken';
+import type { AuthRequest } from '../middleware/loginmiddleware.js';
 
 const prisma = new PrismaClient();
 
-const JWT_SECRET = process.env.JWT_SECRET as string | undefined;
-if (!JWT_SECRET) {
-  throw new Error('JWT_SECRET no está definido en las variables de entorno');
-}
-
-// =======================
-// ✅ NUEVO: Órdenes del cliente logueado
-// =======================
-export const obtenerOrdenesCliente = async (req: Request, res: Response) => {
+/* ======================================================
+   CREAR ORDEN (CLIENTE AUTENTICADO)
+   ====================================================== */
+export const crearOrden = async (req: AuthRequest, res: Response) => {
   try {
-    const token = req.headers.authorization?.replace('Bearer ', '');
-    
-    if (!token) {
-      return res.status(401).json({ 
-        error: 'Token de autenticación requerido' 
-      });
+    console.log('🟢 crearOrden ejecutado');
+
+    if (!req.user?.id) {
+      return res.status(401).json({ error: 'Usuario no autenticado' });
     }
 
-    // Verificar token y obtener clientId
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
-    const clientId = decoded.userId;
-
     const {
-      page = '1',
-      limit = '10',
-    } = req.query;
-
-    const skip = (Number(page) - 1) * Number(limit);
-    const take = Number(limit);
-
-    const [ordenes, total] = await Promise.all([
-      prisma.ordenes.findMany({
-        skip,
-        take,
-        where: { 
-          id_cliente: clientId,  // ✅ SOLO ÓRDENES DEL CLIENTE
-        },
-        orderBy: { c_at: 'desc' },
-        include: {
-          ordenes_items: {
-            include: {
-              productos: {
-                select: {
-                  id: true,
-                  nombre: true,
-                  precio: true,
-                  precio_final: true,
-                  discount: true,
-                  image_url: true,
-                  image_public_id: true,
-                  isbn: true,
-                  autor: true,
-                  editorial: true,
-                  id_categoria: true,
-                },
-              },
-            },
-            orderBy: { id: 'asc' },
-          },
-          clientes: {
-            select: {
-              id: true,
-              nombre: true,
-              apellido: true,
-              email: true,
-              phone: true,
-            },
-          },
-          locations: {
-            select: {
-              id: true,
-              recipient_name: true,
-              recipient_phone: true,
-              address_line1: true,
-              address_line2: true,
-              city: true,
-              postal_code: true,
-            },
-          },
-          comunas: {
-            select: {
-              id: true,
-              nombre: true,
-              codigo_envio: true,
-            },
-          },
-          status_ordenes: {
-            select: {
-              id: true,
-              status: true,
-            },
-          },
-          payments: {
-            include: {
-              payment_statuses: {
-                select: {
-                  id: true,
-                  status_code: true,
-                  description: true,
-                },
-              },
-            },
-            orderBy: { payment_date: 'desc' },
-          },
-        },
-      }),
-      prisma.ordenes.count({ 
-        where: { id_cliente: clientId } 
-      }),
-    ]);
-
-    return res.json({
-      ordenes,
-      pagination: {
-        page: Number(page),
-        limit: Number(limit),
-        total,
-        pages: Math.ceil(total / Number(limit)),
-        hasNext: skip + take < total,
-        hasPrev: Number(page) > 1,
-      },
-    });
-
-  } catch (error: any) {
-    if (error.name === 'JsonWebTokenError') {
-      return res.status(401).json({ error: 'Token inválido' });
-    }
-    console.error('Error obteniendo órdenes del cliente:', error);
-    return res.status(500).json({ error: 'Error al obtener órdenes' });
-  }
-};
-// =======================
-export const crearOrden = async (req: Request, res: Response) => {
-  try {
-    const {
-      id_cliente,
-      // id_location,        // ya no lo pedimos del body
-      id_status_ordenes,    // estado de la ORDEN: pendiente / enviado / cancelado / etc.
+      id_status_ordenes,
       costo_envio,
       id_comuna_destino,
       comments,
-      items,                // [{ id_producto, cantidad, precio_unitario_congelado, discount_aplicado_congelado }]
-      total_precio,         // total de la orden (incluye envío)
-      payment,              // datos del pago Webpay (monto, token, response_code, etc.)
+      items,
+      total_precio,
+      payment,
     } = req.body;
 
-    if (!id_cliente || !id_status_ordenes) {
-      return res.status(400).json({
-        error: 'id_cliente e id_status_ordenes son obligatorios',
-      });
+    if (!id_status_ordenes) {
+      return res.status(400).json({ error: 'id_status_ordenes es obligatorio' });
     }
 
     if (!items || !Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({
-        error: 'Debe enviar al menos un item en la orden',
-      });
+      return res.status(400).json({ error: 'Debe enviar al menos un item' });
     }
 
     if (typeof total_precio !== 'number') {
-      return res.status(400).json({
-        error: 'total_precio debe ser un número',
-      });
+      return res.status(400).json({ error: 'total_precio debe ser un número' });
     }
 
     const nuevaOrden = await prisma.$transaction(async (tx) => {
-      // 1) Orden (estado de la ORDEN)
+      /* ---------------- ORDEN ---------------- */
       const orden = await tx.ordenes.create({
         data: {
-          id_cliente,
+          id_cliente: req.user!.id,
           total_precio,
           id_status_ordenes,
-          // mientras no tengas flow de direcciones real
-          id_location: 1, // Asegúrate de que exista locations.id = 1
+          id_location: 1, // placeholder mientras no tengas direcciones
           costo_envio: costo_envio ?? null,
           id_comuna_destino: id_comuna_destino ?? null,
           comments: comments ?? null,
         },
       });
 
-      // 2) Items
+      /* ---------------- ITEMS ---------------- */
       await tx.ordenes_items.createMany({
         data: items.map((item: any) => ({
           id_orden: orden.id,
@@ -195,17 +63,14 @@ export const crearOrden = async (req: Request, res: Response) => {
         })),
       });
 
-      // 3) Pago: se registra aunque sea fallo, usando payment_statuses.status_code
+      /* ---------------- PAGO ---------------- */
       if (payment) {
-        const rawCode = payment.status_code ?? '0';
-        const statusCode = String(rawCode);
+        const statusCode = String(payment.status_code ?? '0');
 
-        // intenta mapear el response_code/status_code que mandas desde WebpayReturn
         let paymentStatus = await tx.payment_statuses.findFirst({
           where: { status_code: statusCode },
         });
 
-        // si no existe ese código en payment_statuses, intenta usar un genérico 'ERROR'
         if (!paymentStatus) {
           paymentStatus = await tx.payment_statuses.findFirst({
             where: { status_code: 'ERROR' },
@@ -217,7 +82,7 @@ export const crearOrden = async (req: Request, res: Response) => {
             data: {
               id_orden: orden.id,
               id_payment_status: paymentStatus.id,
-              payment_method: payment.payment_method || 'webpay',
+              payment_method: payment.payment_method ?? 'webpay',
               amount: payment.amount,
               transaction_id_prod: payment.transaction_id_prod ?? null,
               transaction_id_inte: payment.transaction_id_inte ?? null,
@@ -231,78 +96,43 @@ export const crearOrden = async (req: Request, res: Response) => {
       return orden;
     });
 
-    const ordenConRelaciones = await prisma.ordenes.findUnique({
+    const ordenCompleta = await prisma.ordenes.findUnique({
       where: { id: nuevaOrden.id },
       include: {
-        ordenes_items: {
-          include: {
-            productos: true,
-          },
-        },
+        ordenes_items: { include: { productos: true } },
         clientes: true,
         locations: true,
         comunas: true,
         status_ordenes: true,
-        payments: {
-          include: {
-            payment_statuses: true,
-          },
-        },
+        payments: { include: { payment_statuses: true } },
       },
     });
 
-    return res.status(201).json(ordenConRelaciones);
+    return res.status(201).json(ordenCompleta);
   } catch (error) {
-    console.error('Error al crear orden (controller):', error);
+    console.error('❌ Error al crear orden:', error);
     return res.status(500).json({ error: 'Error al crear orden' });
   }
 };
 
-// =======================
-// Listar órdenes
-// =======================
-export const obtenerOrdenes = async (req: Request, res: Response) => {
+/* ======================================================
+   ÓRDENES DEL CLIENTE LOGUEADO
+   ====================================================== */
+export const obtenerOrdenesCliente = async (req: AuthRequest, res: Response) => {
   try {
-    const {
-      page = '1',
-      limit = '10',
-      id_cliente,
-      id_status_ordenes,
-      fecha_desde,
-      fecha_hasta,
-    } = req.query;
+    if (!req.user?.id) {
+      return res.status(401).json({ error: 'Usuario no autenticado' });
+    }
 
+    const { page = '1', limit = '10' } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
     const take = Number(limit);
 
-    const whereClause: any = {};
-
-    if (id_cliente) {
-      whereClause.id_cliente = Number(id_cliente);
-    }
-
-    if (id_status_ordenes) {
-      whereClause.id_status_ordenes = Number(id_status_ordenes);
-    }
-
-    if (fecha_desde) {
-      whereClause.c_at = {
-        gte: new Date(fecha_desde as string),
-      };
-    }
-
-    if (fecha_hasta) {
-      if (!whereClause.c_at) {
-        whereClause.c_at = {};
-      }
-      whereClause.c_at.lte = new Date(fecha_hasta as string);
-    }
-
     const [ordenes, total] = await Promise.all([
       prisma.ordenes.findMany({
+        where: { id_cliente: req.user.id },
         skip,
         take,
-        where: whereClause,
         orderBy: { c_at: 'desc' },
         include: {
           ordenes_items: {
@@ -334,45 +164,20 @@ export const obtenerOrdenes = async (req: Request, res: Response) => {
               phone: true,
             },
           },
-          locations: {
-            select: {
-              id: true,
-              recipient_name: true,
-              recipient_phone: true,
-              address_line1: true,
-              address_line2: true,
-              city: true,
-              postal_code: true,
-            },
-          },
-          comunas: {
-            select: {
-              id: true,
-              nombre: true,
-              codigo_envio: true,
-            },
-          },
-          status_ordenes: {
-            select: {
-              id: true,
-              status: true,
-            },
-          },
+          locations: true,
+          comunas: true,
+          status_ordenes: true,
           payments: {
             include: {
-              payment_statuses: {
-                select: {
-                  id: true,
-                  status_code: true,
-                  description: true,
-                },
-              },
+              payment_statuses: true,
             },
             orderBy: { payment_date: 'desc' },
           },
         },
       }),
-      prisma.ordenes.count({ where: whereClause }),
+      prisma.ordenes.count({
+        where: { id_cliente: req.user.id },
+      }),
     ]);
 
     return res.json({
@@ -382,88 +187,80 @@ export const obtenerOrdenes = async (req: Request, res: Response) => {
         limit: Number(limit),
         total,
         pages: Math.ceil(total / Number(limit)),
-        hasNext: skip + take < total,
-        hasPrev: Number(page) > 1,
       },
     });
   } catch (error) {
-    console.error('Error al obtener órdenes:', error);
+    console.error('❌ Error obteniendo órdenes del cliente:', error);
     return res.status(500).json({ error: 'Error al obtener órdenes' });
   }
 };
 
-// =======================
-// Obtener orden por ID
-// =======================
+/* ======================================================
+   LISTAR TODAS LAS ÓRDENES (ADMIN)
+   ====================================================== */
+export const obtenerOrdenes = async (req: Request, res: Response) => {
+  try {
+    const { page = '1', limit = '10', id_cliente, id_status_ordenes } = req.query;
+
+    const skip = (Number(page) - 1) * Number(limit);
+    const take = Number(limit);
+
+    const where: any = {};
+    if (id_cliente) where.id_cliente = Number(id_cliente);
+    if (id_status_ordenes) where.id_status_ordenes = Number(id_status_ordenes);
+
+    const [ordenes, total] = await Promise.all([
+      prisma.ordenes.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { c_at: 'desc' },
+        include: {
+          ordenes_items: { include: { productos: true } },
+          clientes: true,
+          locations: true,
+          comunas: true,
+          status_ordenes: true,
+          payments: { include: { payment_statuses: true } },
+        },
+      }),
+      prisma.ordenes.count({ where }),
+    ]);
+
+    return res.json({
+      ordenes,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        pages: Math.ceil(total / Number(limit)),
+      },
+    });
+  } catch (error) {
+    console.error('❌ Error al obtener órdenes:', error);
+    return res.status(500).json({ error: 'Error al obtener órdenes' });
+  }
+};
+
+/* ======================================================
+   OBTENER ORDEN POR ID
+   ====================================================== */
 export const obtenerOrdenPorId = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
-
-    if (!id || isNaN(Number(id))) {
-      return res.status(400).json({ error: 'ID de orden inválido' });
+    const id = Number(req.params.id);
+    if (isNaN(id)) {
+      return res.status(400).json({ error: 'ID inválido' });
     }
 
     const orden = await prisma.ordenes.findUnique({
-      where: { id: Number(id) },
+      where: { id },
       include: {
-        ordenes_items: {
-          include: {
-            productos: {
-              select: {
-                id: true,
-                nombre: true,
-                precio: true,
-                precio_final: true,
-                discount: true,
-                image_url: true,
-                image_public_id: true,
-                isbn: true,
-                autor: true,
-                editorial: true,
-                numero_paginas: true,
-                encuadernacion: true,
-                idioma: true,
-                id_categoria: true,
-              },
-            },
-          },
-          orderBy: { id: 'asc' },
-        },
-        clientes: {
-          select: {
-            id: true,
-            nombre: true,
-            apellido: true,
-            email: true,
-            phone: true,
-          },
-        },
+        ordenes_items: { include: { productos: true } },
+        clientes: true,
         locations: true,
-        comunas: {
-          select: {
-            id: true,
-            nombre: true,
-            codigo_envio: true,
-          },
-        },
-        status_ordenes: {
-          select: {
-            id: true,
-            status: true,
-          },
-        },
-        payments: {
-          include: {
-            payment_statuses: {
-              select: {
-                id: true,
-                status_code: true,
-                description: true,
-              },
-            },
-          },
-          orderBy: { payment_date: 'desc' },
-        },
+        comunas: true,
+        status_ordenes: true,
+        payments: { include: { payment_statuses: true } },
       },
     });
 
@@ -473,82 +270,63 @@ export const obtenerOrdenPorId = async (req: Request, res: Response) => {
 
     return res.json(orden);
   } catch (error) {
-    console.error('Error al obtener orden por ID:', error);
+    console.error('❌ Error al obtener orden:', error);
     return res.status(500).json({ error: 'Error al obtener orden' });
   }
 };
 
-// =======================
-// Eliminar orden (opcional)
-// =======================
-export const eliminarOrden = async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-
-    if (!id || isNaN(Number(id))) {
-      return res.status(400).json({ error: 'ID de orden inválido' });
-    }
-
-    const deletedOrder = await prisma.$transaction(async (tx) => {
-      await tx.payments.deleteMany({ where: { id_orden: Number(id) } });
-      await tx.ordenes_items.deleteMany({ where: { id_orden: Number(id) } });
-
-      return tx.ordenes.delete({
-        where: { id: Number(id) },
-      });
-    });
-
-    return res.json({
-      message: 'Orden eliminada exitosamente',
-      deletedOrder,
-    });
-  } catch (error) {
-    console.error('Error al eliminar orden:', error);
-    return res.status(500).json({ error: 'Error al eliminar orden' });
-  }
-};
-
+/* ======================================================
+   ACTUALIZAR ORDEN (ADMIN)
+   ====================================================== */
 export const actualizarOrden = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
-    const { id_status_ordenes, comments } = req.body as {
-      id_status_ordenes?: number;
-      comments?: string;
-    };
+    const id = Number(req.params.id);
+    const { id_status_ordenes, comments } = req.body;
 
-    if (!id || isNaN(Number(id))) {
-      return res.status(400).json({ error: 'ID de orden inválido' });
+    if (isNaN(id)) {
+      return res.status(400).json({ error: 'ID inválido' });
     }
 
-    const dataToUpdate: any = {};
+    const data: any = {};
+    if (typeof id_status_ordenes === 'number') data.id_status_ordenes = id_status_ordenes;
+    if (typeof comments === 'string') data.comments = comments;
 
-    if (typeof id_status_ordenes === 'number') {
-      dataToUpdate.id_status_ordenes = id_status_ordenes;
+    if (!Object.keys(data).length) {
+      return res.status(400).json({ error: 'Nada para actualizar' });
     }
 
-    if (typeof comments === 'string') {
-      dataToUpdate.comments = comments;
-    }
-
-    if (Object.keys(dataToUpdate).length === 0) {
-      return res
-        .status(400)
-        .json({ error: 'No se enviaron campos para actualizar' });
-    }
-
-    const ordenActualizada = await prisma.ordenes.update({
-      where: { id: Number(id) },
-      data: dataToUpdate,
-      include: {
-        status_ordenes: true,
-        clientes: true,
-      },
+    const orden = await prisma.ordenes.update({
+      where: { id },
+      data,
+      include: { status_ordenes: true, clientes: true },
     });
 
-    return res.json(ordenActualizada);
+    return res.json(orden);
   } catch (error) {
-    console.error('Error al actualizar orden:', error);
+    console.error('❌ Error al actualizar orden:', error);
     return res.status(500).json({ error: 'Error al actualizar orden' });
   }
 };
 
+/* ======================================================
+   ELIMINAR ORDEN (ADMIN)
+   ====================================================== */
+export const eliminarOrden = async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+    if (isNaN(id)) {
+      return res.status(400).json({ error: 'ID inválido' });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.payments.deleteMany({ where: { id_orden: id } });
+      await tx.ordenes_items.deleteMany({ where: { id_orden: id } });
+      await tx.ordenes.delete({ where: { id } });
+    });
+
+    return res.json({ message: 'Orden eliminada correctamente' });
+  } catch (error) {
+    console.error('❌ Error al eliminar orden:', error);
+    return res.status(500).json({ error: 'Error al eliminar orden' });
+  }
+};
